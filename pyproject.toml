@@ -1,0 +1,16 @@
+[project]
+name = "adtention-hermes"
+version = "0.1.0"
+description = "ADtention sponsor segments for Hermes Agent wait-state messages"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "ADtention"}]
+dependencies = []
+
+[project.entry-points."hermes_agent.plugins"]
+adtention = "adtention_hermes"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
