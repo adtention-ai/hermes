@@ -16,6 +16,7 @@ from .renderer import decorate_wait_state, is_wait_state
 WRAPPED_FLAG = "_adtention_wrapped"
 ORIGINALS_ATTR = "_adtention_originals"
 SUPPORTED_METHODS = ("send", "edit_message", "send_or_update_status")
+SUPPORTED_PLATFORMS = {"telegram", "discord"}
 
 
 def wrap_gateway(gateway: Any, runtime: Any) -> None:
@@ -91,6 +92,10 @@ def _decorate_call(adapter: Any, method_name: str, args: tuple, kwargs: dict, ru
     if hasattr(runtime, "is_enabled") and not runtime.is_enabled():
         return args, kwargs, None
 
+    platform = _adapter_platform(adapter)
+    if platform not in SUPPORTED_PLATFORMS:
+        return args, kwargs, None
+
     locator = _find_text_locator(method_name, args, kwargs)
     if locator is None:
         return args, kwargs, None
@@ -98,7 +103,6 @@ def _decorate_call(adapter: Any, method_name: str, args: tuple, kwargs: dict, ru
     if not isinstance(text, str) or not is_wait_state(text):
         return args, kwargs, None
 
-    platform = getattr(adapter, "platform", "unknown")
     sponsor = runtime.get_sponsor_for_render(platform=platform)
     if not sponsor:
         return args, kwargs, None
@@ -117,13 +121,16 @@ def _decorate_call(adapter: Any, method_name: str, args: tuple, kwargs: dict, ru
 
 
 def _find_text_locator(method_name: str, args: tuple, kwargs: dict):
-    if "text" in kwargs and isinstance(kwargs["text"], str):
-        return ("kw", "text", kwargs["text"])
+    # Hermes platform adapters name the user-visible message body ``content``;
+    # some tests/older helpers use ``text``. Prefer content when both appear.
+    for key_name in ("content", "text"):
+        if key_name in kwargs and isinstance(kwargs[key_name], str):
+            return ("kw", key_name, kwargs[key_name])
 
     preferred_index = {
         "send": 1,
         "edit_message": 2,
-        "send_or_update_status": 1,
+        "send_or_update_status": 2,  # (chat_id, status_key, content, ...)
     }.get(method_name)
     if preferred_index is not None and len(args) > preferred_index and isinstance(args[preferred_index], str):
         return ("arg", preferred_index, args[preferred_index])
@@ -132,6 +139,28 @@ def _find_text_locator(method_name: str, args: tuple, kwargs: dict):
         if isinstance(args[index], str):
             return ("arg", index, args[index])
     return None
+
+
+def _platform_name(value: Any) -> str:
+    if value is None:
+        return "unknown"
+    raw = getattr(value, "value", value)
+    text = str(raw or "unknown").strip().lower()
+    if text.startswith("platform."):
+        text = text.split(".", 1)[1]
+    return text or "unknown"
+
+
+def _adapter_platform(adapter: Any) -> str:
+    for attr in ("platform", "name"):
+        value = getattr(adapter, attr, None)
+        if value:
+            return _platform_name(value)
+    class_name = adapter.__class__.__name__.lower()
+    for platform in SUPPORTED_PLATFORMS:
+        if platform in class_name:
+            return platform
+    return "unknown"
 
 
 def _send_succeeded(result: Any) -> bool:
@@ -165,7 +194,7 @@ def _ack_safely(adapter: Any, method_name: str, args: tuple, kwargs: dict, resul
         message_id = _message_id(method_name, args, kwargs, result)
         if not message_id:
             return
-        platform = getattr(adapter, "platform", "unknown")
+        platform = _adapter_platform(adapter)
         runtime.ack_rendered_once(sponsor, platform, message_id)
     except Exception:
         # Billing/telemetry must never break platform message delivery.

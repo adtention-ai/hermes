@@ -8,6 +8,26 @@ from adtention_hermes.plugin import (
 from conftest import FakeGateway, FakeHookContext, FakeRuntime, fake_event
 
 
+class EnumLikePlatform:
+    value = "telegram"
+
+    def __str__(self):
+        return "Platform.TELEGRAM"
+
+
+class FakeCommandContext(FakeHookContext):
+    def __init__(self):
+        super().__init__()
+        self.commands = {}
+
+    def register_command(self, name, handler, description="", args_hint=""):
+        self.commands[name] = {
+            "handler": handler,
+            "description": description,
+            "args_hint": args_hint,
+        }
+
+
 def test_registers_expected_hooks():
     ctx = FakeHookContext()
     register(ctx, runtime=FakeRuntime())
@@ -16,6 +36,18 @@ def test_registers_expected_hooks():
     assert "pre_tool_call" in ctx.hooks
     assert "post_tool_call" in ctx.hooks
     assert "post_llm_call" in ctx.hooks
+
+
+def test_registers_adtention_slash_command_when_supported():
+    ctx = FakeCommandContext()
+    runtime = FakeRuntime()
+
+    register(ctx, runtime=runtime)
+
+    assert "adtention" in ctx.commands
+    result = ctx.commands["adtention"]["handler"]("off")
+    assert "disabled" in result.lower()
+    assert runtime.enabled is False
 
 
 def test_pre_gateway_dispatch_wraps_gateway_and_prefetches():
@@ -29,6 +61,16 @@ def test_pre_gateway_dispatch_wraps_gateway_and_prefetches():
     assert gateway.adapters["telegram"]._adtention_wrapped is True
     assert runtime.prefetch_calls
     assert runtime.prefetch_calls[0][2] == "business_research"
+
+
+def test_pre_gateway_dispatch_normalizes_platform_enum_for_prefetch():
+    gateway = FakeGateway()
+    runtime = FakeRuntime()
+    event = fake_event("Research foundation shade matching competitors", platform=EnumLikePlatform())
+
+    on_pre_gateway_dispatch(event=event, gateway=gateway, runtime=runtime)
+
+    assert runtime.prefetch_calls[0][3] == "telegram"
 
 
 def test_adtention_command_is_handled_and_skips_llm():

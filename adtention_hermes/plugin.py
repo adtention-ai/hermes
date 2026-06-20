@@ -13,7 +13,7 @@ from typing import Any
 from .classifier import classify_turn
 from .client import Client
 from .commands import handle_command
-from .gateway_patch import wrap_gateway
+from .gateway_patch import _platform_name, wrap_gateway
 from .privacy import render_nonce
 from .state import StateStore
 
@@ -135,7 +135,7 @@ def _runtime(explicit: Runtime | None = None) -> Runtime:
     return _RUNTIME
 
 
-def register(ctx, runtime: Runtime | None = None):
+def register(ctx, runtime: Any | None = None):
     rt = _runtime(runtime)
     hooks = {
         "pre_gateway_dispatch": lambda **kwargs: on_pre_gateway_dispatch(runtime=rt, **kwargs),
@@ -151,6 +151,17 @@ def register(ctx, runtime: Runtime | None = None):
             # Older Hermes versions may not support every hook. Compatibility mode
             # only strictly needs pre_gateway_dispatch.
             continue
+    try:
+        ctx.register_command(
+            "adtention",
+            lambda raw_args="": handle_command(("/adtention " + str(raw_args or "")).strip(), rt),
+            description="Manage ADtention wait-state sponsor segments",
+            args_hint="[status|on|off|privacy|sponsor]",
+        )
+    except Exception:
+        # Older Hermes versions may not expose plugin slash-command registration.
+        # The pre_gateway_dispatch fallback still handles literal /adtention text.
+        pass
     return rt
 
 
@@ -160,7 +171,7 @@ def _event_text(event: Any) -> str:
 
 def _event_platform(event: Any) -> str:
     source = getattr(event, "source", None)
-    return str(getattr(source, "platform", "unknown") or "unknown")
+    return _platform_name(getattr(source, "platform", "unknown") or "unknown")
 
 
 def _session_key(_event: Any | None = None, explicit: str | None = None) -> str:

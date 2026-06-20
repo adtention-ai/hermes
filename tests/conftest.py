@@ -9,7 +9,7 @@ class FakeResult:
 
 
 class FakeAdapter:
-    def __init__(self, platform="telegram"):
+    def __init__(self, platform: object = "telegram"):
         self.platform = platform
         self.sent = []
         self.edited = []
@@ -23,7 +23,8 @@ class FakeAdapter:
         self.edited.append((chat_id, message_id, text, kwargs))
         return FakeResult(True, message_id)
 
-    async def send_or_update_status(self, chat_id, text, **kwargs):
+    async def send_or_update_status(self, chat_id, status_key_or_text, content=None, **kwargs):
+        text = content if content is not None else status_key_or_text
         self.status_updates.append((chat_id, text, kwargs))
         return FakeResult(True, kwargs.get("message_id", "status1"))
 
@@ -41,7 +42,7 @@ class ExplodingAdapter(FakeAdapter):
 
 @dataclass
 class FakeSource:
-    platform: str = "telegram"
+    platform: object = "telegram"
     chat_id: str = "chat1"
     thread_id: str | None = None
     chat_name: str = "Test Chat"
@@ -57,7 +58,7 @@ class FakeEvent:
     media_types: list[str] | None = None
 
 
-def fake_event(text, platform="telegram"):
+def fake_event(text, platform: object = "telegram"):
     return FakeEvent(text=text, source=FakeSource(platform=platform))
 
 
