@@ -2,7 +2,7 @@ import asyncio
 
 from adtention_hermes.gateway_patch import wrap_adapter, wrap_gateway
 from adtention_hermes.renderer import SPONSOR_MARKER
-from conftest import BrokenRuntime, FailingAdapter, FakeAdapter, FakeGateway, FakeRuntime
+from conftest import BrokenRuntime, FailingAdapter, FakeAdapter, FakeGateway, FakeResult, FakeRuntime
 
 
 class EnumLikePlatform:
@@ -10,6 +10,17 @@ class EnumLikePlatform:
 
     def __str__(self):
         return "Platform.TELEGRAM"
+
+
+class LegacyTelegramAdapter:
+    platform = "telegram"
+
+    def __init__(self):
+        self.edited = []
+
+    async def edit_message(self, chat_id, message_id, text):
+        self.edited.append((chat_id, message_id, text, {}))
+        return FakeResult(True, message_id)
 
 
 def test_wraps_adapter_once():
@@ -39,7 +50,10 @@ def test_send_decorates_wait_state():
     sent_text = adapter.sent[0][1]
     assert "⏳ Working — 3 min" in sent_text
     assert "Neon" in sent_text
+    assert "**Neon" in sent_text
+    assert "$0.42" in sent_text
     assert SPONSOR_MARKER in sent_text
+    assert "ADtention" not in sent_text
     assert result.success is True
 
 
@@ -103,6 +117,27 @@ def test_edit_decorates_real_hermes_content_keyword():
     asyncio.run(adapter.edit_message("chat1", "m1", text="ignored by fake", content="⏳ Working — 3 min"))
 
     assert "Neon" in adapter.edited[0][3]["content"]
+    assert adapter.edited[0][3]["finalize"] is True
+
+
+def test_telegram_wait_state_edit_requests_markdown_finalize():
+    adapter = FakeAdapter(platform="telegram")
+    runtime = FakeRuntime()
+    wrap_adapter(adapter, runtime)
+
+    asyncio.run(adapter.edit_message("chat1", "m1", "⏳ Working — 3 min"))
+
+    assert adapter.edited[0][3]["finalize"] is True
+
+
+def test_legacy_telegram_edit_without_finalize_kw_does_not_break_delivery():
+    adapter = LegacyTelegramAdapter()
+    runtime = FakeRuntime()
+    wrap_adapter(adapter, runtime)
+
+    asyncio.run(adapter.edit_message("chat1", "m1", "⏳ Working — 3 min"))
+
+    assert "Neon" in adapter.edited[0][2]
 
 
 def test_edit_replaces_existing_segment_not_duplicate():
@@ -115,6 +150,7 @@ def test_edit_replaces_existing_segment_not_duplicate():
 
     assert text.count(SPONSOR_MARKER) == 1
     assert "Neon" in text
+    assert "ADtention" not in text
 
 
 def test_failed_send_does_not_ack_impression():

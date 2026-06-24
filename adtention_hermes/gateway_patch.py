@@ -47,7 +47,7 @@ def _make_wrapper(adapter: Any, method_name: str, original: Callable, runtime: A
         original_kwargs = dict(kwargs)
         sponsor = None
         try:
-            args, kwargs, sponsor = _decorate_call(adapter, method_name, args, dict(kwargs), runtime)
+            args, kwargs, sponsor = _decorate_call(adapter, method_name, original, args, dict(kwargs), runtime)
         except Exception:
             args, kwargs, sponsor = original_args, original_kwargs, None
 
@@ -61,7 +61,7 @@ def _make_wrapper(adapter: Any, method_name: str, original: Callable, runtime: A
         original_kwargs = dict(kwargs)
         sponsor = None
         try:
-            args, kwargs, sponsor = _decorate_call(adapter, method_name, args, dict(kwargs), runtime)
+            args, kwargs, sponsor = _decorate_call(adapter, method_name, original, args, dict(kwargs), runtime)
         except Exception:
             args, kwargs, sponsor = original_args, original_kwargs, None
 
@@ -88,7 +88,18 @@ async def _maybe_await(value):
     return value
 
 
-def _decorate_call(adapter: Any, method_name: str, args: tuple, kwargs: dict, runtime: Any):
+def _accepts_keyword(callable_obj: Callable, keyword: str) -> bool:
+    try:
+        signature = inspect.signature(callable_obj)
+    except (TypeError, ValueError):
+        return False
+    return any(
+        name == keyword or param.kind == inspect.Parameter.VAR_KEYWORD
+        for name, param in signature.parameters.items()
+    )
+
+
+def _decorate_call(adapter: Any, method_name: str, original: Callable, args: tuple, kwargs: dict, runtime: Any):
     if hasattr(runtime, "is_enabled") and not runtime.is_enabled():
         return args, kwargs, None
 
@@ -111,12 +122,27 @@ def _decorate_call(adapter: Any, method_name: str, args: tuple, kwargs: dict, ru
     if new_text == text:
         return args, kwargs, None
 
+    can_finalize_telegram_edit = (
+        method_name == "edit_message"
+        and platform == "telegram"
+        and _accepts_keyword(original, "finalize")
+    )
+
     if where == "kw":
         kwargs[key] = new_text
+        if can_finalize_telegram_edit:
+            # TelegramAdapter only applies parse_mode/MarkdownV2 formatting on
+            # finalize edits. Wait-state sponsor segments contain standard
+            # Markdown for bold/link rendering, so decorated status edits must
+            # request the formatted path instead of Telegram's raw streaming
+            # edit path.
+            kwargs["finalize"] = True
         return args, kwargs, sponsor
 
     mutable_args = list(args)
     mutable_args[key] = new_text
+    if can_finalize_telegram_edit:
+        kwargs["finalize"] = True
     return tuple(mutable_args), kwargs, sponsor
 
 

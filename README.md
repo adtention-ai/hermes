@@ -33,7 +33,9 @@ Then check status from Telegram or Discord:
 
 ADtention for Hermes classifies locally. It **never sends prompts**, replies, chat history, code, files, filenames, paths, repo names, chat IDs, user IDs, tool arguments, terminal output, or tool output.
 
-The API receives only broad metadata:
+On first use, the plugin creates a random local install ID and sends it once to
+register the install and receive a publisher ID. Normal sponsor/impression API
+calls receive only broad metadata:
 
 ```json
 {
@@ -54,7 +56,9 @@ Impressions are acknowledged only after a wait-state message is successfully sen
 - `pre_gateway_dispatch` wraps Telegram/Discord gateway adapters once per process.
 - `pre_llm_call` and tool hooks classify broad task intent locally.
 - Sponsor fetches happen in the background, never in the render hot path.
-- The renderer appends a single bounded line with an `⊕ ADtention ·` marker.
+- The renderer appends a single bounded line with balance, bold sponsor copy,
+  and a hidden `[More Info](...)` click link; visible wait-state text does not
+  include ADtention branding.
 - Message edits replace the plugin’s previous segment instead of duplicating it.
 - Broken ADtention API calls are isolated from normal Hermes message delivery.
 
@@ -83,6 +87,22 @@ hermes gateway restart
 ```bash
 python -m pytest tests -q
 python -m compileall adtention_hermes
+ruff check .
+python -m build
 ```
 
 The v1 implementation is stdlib-only at runtime.
+
+## Release
+
+Releases are cut from version tags. Update `pyproject.toml` and `plugin.yaml`
+to the same version, then push a tag:
+
+```bash
+git tag v0.1.0
+git push origin main v0.1.0
+```
+
+The GitHub Actions release workflow verifies metadata, runs tests/lint,
+builds the package, uploads the distribution artifact, and creates or updates
+the GitHub Release.

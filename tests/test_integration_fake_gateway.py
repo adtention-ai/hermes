@@ -8,8 +8,13 @@ from conftest import FakeGateway, fake_event
 class SlowFakeClient:
     def __init__(self, delay_seconds=10):
         self.delay_seconds = delay_seconds
+        self.register_calls = []
         self.serve_calls = []
         self.acks = []
+
+    def register_install(self, **kwargs):
+        self.register_calls.append(kwargs)
+        return {"publisher_id": "pub_registered"}
 
     def serve(self, **kwargs):
         self.serve_calls.append(kwargs)
@@ -59,7 +64,11 @@ def test_wait_state_uses_cached_sponsor_and_acks_after_send(tmp_path):
     on_pre_gateway_dispatch(event=fake_event("Research AI papers"), gateway=gateway, runtime=runtime)
     asyncio.run(gateway.adapters["telegram"].send("chat1", "⏳ Working — 3 min"))
 
-    assert "Neon" in gateway.adapters["telegram"].sent[0][1]
+    sent_text = gateway.adapters["telegram"].sent[0][1]
+    assert "**Neon: Postgres for AI agents**" in sent_text
+    assert "$0.42" in sent_text
+    assert "[More Info](https://api.adtention.ai/v1/click/imp_1)" in sent_text
+    assert "ADtention" not in sent_text
     assert len(client.acks) == 1
     assert "chat_id" not in client.acks[0]
     assert "message" not in client.acks[0]
@@ -74,6 +83,23 @@ def test_no_cached_sponsor_leaves_wait_state_unchanged(tmp_path):
     asyncio.run(gateway.adapters["telegram"].send("chat1", "⏳ Working — 3 min"))
 
     assert gateway.adapters["telegram"].sent[0][1] == "⏳ Working — 3 min"
+
+
+def test_prefetch_registers_install_when_publisher_id_missing(tmp_path):
+    client = FastFakeClient()
+    runtime = Runtime.for_tests(base_dir=tmp_path, client=client, publisher_id=None)
+
+    classification = runtime.classify_and_store(runtime.default_session_key, user_message="Research AI papers")
+    runtime.prefetch_sponsor_async(runtime.default_session_key, classification, "telegram")
+
+    deadline = time.monotonic() + 1
+    while time.monotonic() < deadline and not client.serve_calls:
+        time.sleep(0.01)
+
+    assert client.register_calls == [{"install_id": runtime.install_id}]
+    assert client.serve_calls[0]["publisher_id"] == "pub_registered"
+    assert runtime.publisher_id == "pub_registered"
+    assert runtime.state.get_publisher_id() == "pub_registered"
 
 
 def test_final_answer_after_same_turn_is_not_decorated(tmp_path):
@@ -109,7 +135,10 @@ def test_discord_adapter_gets_same_behavior(tmp_path):
     on_pre_gateway_dispatch(event=fake_event("Scrape this website", platform="discord"), gateway=gateway, runtime=runtime)
     asyncio.run(gateway.adapters["discord"].send("channel1", "⏳ Working — 3 min"))
 
-    assert "ADtention" in gateway.adapters["discord"].sent[0][1]
+    sent_text = gateway.adapters["discord"].sent[0][1]
+    assert "ADtention" not in sent_text
+    assert "**Neon**" in sent_text
+    assert "[More Info](https://x)" in sent_text
 
 
 def test_disabled_plugin_is_byte_for_byte_unchanged(tmp_path):

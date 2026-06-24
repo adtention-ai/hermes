@@ -1,0 +1,102 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to release, e.g. v0.1.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve release tag
+        id: vars
+        shell: bash
+        env:
+          DISPATCH_TAG: ${{ inputs.tag }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            tag="$DISPATCH_TAG"
+          else
+            tag="$GITHUB_REF_NAME"
+          fi
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tag must look like v0.1.0; got: $tag" >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.vars.outputs.tag }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install release tooling
+        run: python -m pip install --upgrade pip build pytest ruff
+
+      - name: Verify release metadata matches tag
+        env:
+          RELEASE_VERSION: ${{ steps.vars.outputs.version }}
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          import tomllib
+          from pathlib import Path
+
+          expected = os.environ["RELEASE_VERSION"]
+          project = tomllib.loads(Path("pyproject.toml").read_text())
+          pyproject_version = project["project"]["version"]
+          plugin_yaml = Path("plugin.yaml").read_text()
+          match = re.search(r'^version:\s*["\']?([^"\'\n]+)["\']?\s*$', plugin_yaml, re.MULTILINE)
+          plugin_version = match.group(1) if match else None
+
+          if pyproject_version != expected:
+              raise SystemExit(f"pyproject.toml version {pyproject_version!r} != tag {expected!r}")
+          if plugin_version != expected:
+              raise SystemExit(f"plugin.yaml version {plugin_version!r} != tag {expected!r}")
+          PY
+
+      - name: Run tests
+        run: python -m pytest tests -q
+
+      - name: Run import/syntax check
+        run: python -m compileall adtention_hermes
+
+      - name: Run lint
+        run: ruff check .
+
+      - name: Build package
+        run: python -m build
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: adtention-hermes-${{ steps.vars.outputs.tag }}-dist
+          path: dist/*
+          if-no-files-found: error
+
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.vars.outputs.tag }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" dist/* --clobber
+          else
+            gh release create "$RELEASE_TAG" dist/* --verify-tag --title "$RELEASE_TAG" --generate-notes
+          fi

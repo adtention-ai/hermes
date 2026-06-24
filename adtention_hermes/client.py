@@ -55,7 +55,14 @@ class Client:
         request = urllib.request.Request(
             url,
             data=data,
-            headers={"Content-Type": "application/json", "Accept": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                # Cloudflare Bot Fight Mode blocks Python's default urllib User-Agent
+                # with Error 1010. Use an explicit product UA so the public API accepts
+                # normal plugin traffic without sending any extra user data.
+                "User-Agent": f"ADtention-Hermes/{self.client_version}",
+            },
             method="POST",
         )
         with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310 - URL is user-configured API endpoint.

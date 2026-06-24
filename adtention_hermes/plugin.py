@@ -81,7 +81,7 @@ class Runtime:
         return self.state.get_sponsor(session_key or self.default_session_key)
 
     def prefetch_sponsor_async(self, session_key: str, classification: Any, platform: str) -> None:
-        if not self.is_enabled() or not self.publisher_id:
+        if not self.is_enabled():
             return
         if not self.state.can_refresh_sponsor(min_seconds=15):
             return
@@ -92,14 +92,29 @@ class Runtime:
             # immediate first send in tests or in real gateway handlers.
             time.sleep(0.05)
             try:
+                publisher_id = self.publisher_id
+                if not publisher_id:
+                    reg = self.client.register_install(install_id=self.install_id)
+                    publisher_id = reg.get("publisher_id")
+                    if not publisher_id:
+                        return
+                    self.publisher_id = publisher_id
+                    self.state.set_publisher_id(publisher_id)
+
                 sponsor = self.client.serve(
-                    publisher_id=self.publisher_id,
+                    publisher_id=publisher_id,
                     category=classification.category,
                     category_v2=classification.category_v2,
                     platform=platform,
                     nonce=render_nonce(self.install_id, session_key, classification.category_v2, int(time.time() // 60)),
                 )
                 if sponsor:
+                    # Compatibility with the current server contract while it still returns
+                    # ad_id instead of creative_id and relative click paths.
+                    if sponsor.get("ad_id") and not sponsor.get("creative_id"):
+                        sponsor["creative_id"] = sponsor["ad_id"]
+                    if str(sponsor.get("click_url", "")).startswith("/"):
+                        sponsor["click_url"] = self.client.api_url + sponsor["click_url"]
                     self.state.save_sponsor(session_key, sponsor)
             except Exception:
                 return

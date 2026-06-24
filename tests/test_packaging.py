@@ -33,3 +33,14 @@ def test_ci_workflow_runs_pytest():
     text = Path(".github/workflows/ci.yml").read_text()
     assert "pytest" in text
     assert "compileall" in text
+
+
+def test_release_workflow_builds_and_publishes_github_release():
+    text = Path(".github/workflows/release.yml").read_text()
+    assert "v*.*.*" in text
+    assert "python -m build" in text
+    assert "gh release create" in text
+    assert "pyproject.toml version" in text
+    assert "plugin.yaml version" in text
+    assert "DISPATCH_TAG" in text
+    assert 'tag="${{ inputs.tag }}"' not in text

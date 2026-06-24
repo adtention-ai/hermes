@@ -11,7 +11,12 @@ from __future__ import annotations
 import re
 from typing import Mapping, Any
 
-SPONSOR_MARKER = "⊕ ADtention ·"
+SPONSOR_LINK_LABEL = "More Info"
+# Invisible Separator (U+2063). It lets edits identify our own hidden-brand
+# sponsor line without showing ADtention branding or stripping arbitrary host
+# lines that happen to contain a "More Info" link.
+SPONSOR_MARKER = "\u2063"
+LEGACY_SPONSOR_MARKERS = ("⊕ ADtention ·", "⊕ ADtention")
 _MAX_SEGMENT_CHARS = 280
 _CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _WHITESPACE = re.compile(r"\s+")
@@ -30,11 +35,18 @@ _WAIT_PREFIXES = (
 )
 
 
+def _is_existing_segment_line(line: str) -> bool:
+    stripped = line.strip()
+    if any(stripped.startswith(marker) for marker in LEGACY_SPONSOR_MARKERS):
+        return True
+    return stripped.startswith(SPONSOR_MARKER)
+
+
 def strip_existing_segment(text: str) -> str:
-    """Remove previously-rendered ADtention segment lines from ``text``."""
+    """Remove previously-rendered sponsor segment lines from ``text``."""
     if not isinstance(text, str):
         return text
-    lines = [line for line in text.splitlines() if not line.strip().startswith(SPONSOR_MARKER)]
+    lines = [line for line in text.splitlines() if not _is_existing_segment_line(line)]
     return "\n".join(lines).rstrip()
 
 
@@ -58,9 +70,21 @@ def _sanitize_one_line(value: Any, *, max_chars: int = _MAX_SEGMENT_CHARS) -> st
     return text
 
 
+def _escape_markdown_text(value: str) -> str:
+    """Escape Markdown control characters inside bold sponsor copy."""
+    return re.sub(r"([\\`*_\[\]()])", r"\\\1", value)
+
+
+def _sanitize_link_url(value: Any) -> str:
+    url = _sanitize_one_line(value, max_chars=180)
+    if not url.startswith(("https://", "http://")):
+        return ""
+    return url.replace("(", "%28").replace(")", "%29")
+
+
 def _format_balance(sponsor: Mapping[str, Any]) -> str:
     if sponsor.get("balance_display"):
-        return _sanitize_one_line(sponsor["balance_display"], max_chars=32)
+        return _escape_markdown_text(_sanitize_one_line(sponsor["balance_display"], max_chars=32))
     value = sponsor.get("balance_usd")
     if isinstance(value, (int, float)):
         return f"${value:.2f}"
@@ -70,23 +94,26 @@ def _format_balance(sponsor: Mapping[str, Any]) -> str:
 def _build_segment(sponsor: Mapping[str, Any], *, max_segment_chars: int = _MAX_SEGMENT_CHARS) -> str:
     sponsor_text = _sanitize_one_line(sponsor.get("text", ""), max_chars=max_segment_chars)
     balance = _format_balance(sponsor)
-    click_url = _sanitize_one_line(sponsor.get("click_url", ""), max_chars=180)
+    click_url = _sanitize_link_url(sponsor.get("click_url", ""))
 
-    parts = [SPONSOR_MARKER]
+    if not sponsor_text or not click_url:
+        return ""
+
+    parts = []
     if balance:
         parts.append(balance)
-    if sponsor_text:
-        parts.append(sponsor_text)
+    parts.append(f"**{_escape_markdown_text(sponsor_text)}**")
     line = " · ".join(parts)
-    if click_url:
-        line = f"{line} → {click_url}"
-    return line
+    link = f"[{SPONSOR_LINK_LABEL}]({click_url})"
+    return f"{SPONSOR_MARKER}{line} → {link}"
 
 
 def append_sponsor_segment(text: str, sponsor: Mapping[str, Any], *, max_chars: int = 4000) -> str:
-    """Append a sanitized sponsor segment, replacing any prior ADtention line."""
+    """Append a sanitized sponsor segment, replacing any prior sponsor line."""
     base = strip_existing_segment(text)
     segment = _build_segment(sponsor)
+    if not segment:
+        return base
     combined = f"{base}\n{segment}" if base else segment
     if len(combined) <= max_chars:
         return combined
@@ -94,7 +121,7 @@ def append_sponsor_segment(text: str, sponsor: Mapping[str, Any], *, max_chars: 
     # Preserve the wait-state text first; truncate only the sponsor line.
     separator_len = 1 if base else 0
     available_for_segment = max_chars - len(base) - separator_len
-    if available_for_segment <= len(SPONSOR_MARKER) + 4:
+    if available_for_segment <= len(SPONSOR_LINK_LABEL) + 4:
         return base[:max_chars]
 
     truncated_segment = segment[: max(0, available_for_segment - 1)].rstrip() + "…"
