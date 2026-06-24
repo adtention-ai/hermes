@@ -1,0 +1,5 @@
+include CHANGELOG.md
+include plugin.yaml
+include after-install.md
+recursive-include scripts *.py
+recursive-include tests *.py

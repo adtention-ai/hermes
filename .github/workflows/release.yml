@@ -83,6 +83,9 @@ jobs:
       - name: Build package
         run: python -m build
 
+      - name: Prepare release notes
+        run: python scripts/extract_changelog.py "${{ steps.vars.outputs.version }}" > release-notes.md
+
       - name: Upload dist artifact
         uses: actions/upload-artifact@v4
         with:
@@ -96,7 +99,8 @@ jobs:
           RELEASE_TAG: ${{ steps.vars.outputs.tag }}
         run: |
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file release-notes.md
             gh release upload "$RELEASE_TAG" dist/* --clobber
           else
-            gh release create "$RELEASE_TAG" dist/* --verify-tag --title "$RELEASE_TAG" --generate-notes
+            gh release create "$RELEASE_TAG" dist/* --verify-tag --title "$RELEASE_TAG" --notes-file release-notes.md
           fi

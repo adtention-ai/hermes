@@ -10,7 +10,13 @@ HELP = """ADtention commands:
 /adtention sponsor — show the current sponsor
 """.strip()
 
-PRIVACY_TEXT = """ADtention for Hermes classifies locally. Prompts, replies, chat history, code, files, filenames, paths, chat IDs, user IDs, tool arguments, and tool output never leave this machine. The API receives only a broad category, host/surface/platform, publisher/install ID, and render nonce."""
+PRIVACY_TEXT = (
+    "ADtention for Hermes classifies locally. Prompts, replies, chat history, code, files, "
+    "filenames, paths, chat IDs, user IDs, tool arguments, terminal output, and tool output "
+    "never leave this machine. The API receives only broad category words, pseudonymous "
+    "install/publisher IDs, host/surface/platform labels, client/version labels, render "
+    "nonces, and impression/creative IDs for successful render acknowledgment."
+)
 
 
 def _status(runtime) -> dict:

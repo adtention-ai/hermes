@@ -1,12 +1,27 @@
 [project]
 name = "adtention-hermes"
-version = "0.1.0"
-description = "ADtention sponsor segments for Hermes Agent wait-state messages"
+version = "0.1.1"
+description = "ADtention for Hermes — one quiet sponsor line in Telegram/Discord wait states that pays you while your agent works."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 authors = [{name = "ADtention"}]
 dependencies = []
+keywords = ["hermes-agent", "hermes-plugin", "adtention", "sponsor", "telegram", "discord"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Plugins",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Communications :: Chat",
+    "Topic :: Software Development",
+]
+
+[project.urls]
+Homepage = "https://adtention.ai"
+Repository = "https://github.com/adtention-ai/hermes"
+Issues = "https://github.com/adtention-ai/hermes/issues"
 
 [project.entry-points."hermes_agent.plugins"]
 adtention = "adtention_hermes"

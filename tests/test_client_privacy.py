@@ -29,6 +29,7 @@ def test_serve_payload_contains_only_allowed_keys():
     assert sponsor["creative_id"] == "cr_1"
     assert set(payload) <= {
         "publisher_id",
+        "client",
         "category",
         "category_v2",
         "host",
@@ -38,6 +39,43 @@ def test_serve_payload_contains_only_allowed_keys():
         "ack_required",
         "client_version",
     }
+
+
+def test_serve_payload_tags_hermes_client():
+    sent = []
+
+    def fake_post(url, payload, timeout):
+        sent.append(payload)
+        return {
+            "text": "Neon: Postgres for AI agents",
+            "creative_id": "cr_1",
+            "impression_id": "imp_1",
+            "click_url": "https://api.adtention.ai/v1/click/imp_1",
+        }
+
+    client = Client(api_url="https://api.adtention.ai", post_json=fake_post)
+    client.serve(
+        publisher_id="pub_1",
+        category="data",
+        category_v2="web_research",
+        platform="telegram",
+        nonce="n1",
+    )
+
+    assert sent[0]["client"] == "hermes"
+
+
+def test_register_payload_tags_hermes_client():
+    sent = []
+
+    def fake_post(url, payload, timeout):
+        sent.append(payload)
+        return {"publisher_id": "pub_1"}
+
+    client = Client(api_url="https://api.adtention.ai", post_json=fake_post)
+    client.register_install(install_id="install_1")
+
+    assert sent[0]["client"] == "hermes"
 
 
 def test_serve_payload_rejects_prompt_like_extra_fields():

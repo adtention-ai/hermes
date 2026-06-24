@@ -10,8 +10,10 @@ PostJSON = Callable[[str, dict[str, Any], float], dict[str, Any]]
 
 
 class Client:
+    CLIENT_TAG = "hermes"
     SERVE_ALLOWED_KEYS = {
         "publisher_id",
+        "client",
         "category",
         "category_v2",
         "host",
@@ -33,6 +35,7 @@ class Client:
     }
     REGISTER_ALLOWED_KEYS = {
         "install_id",
+        "client",
         "host",
         "client_version",
     }
@@ -43,7 +46,7 @@ class Client:
         api_url: str = "https://api.adtention.ai",
         post_json: PostJSON | None = None,
         timeout: float = 5.0,
-        client_version: str = "0.1.0",
+        client_version: str = "0.1.1",
     ):
         self.api_url = api_url.rstrip("/")
         self.post_json = post_json or self._urllib_post_json
@@ -85,6 +88,7 @@ class Client:
     ) -> dict[str, Any]:
         payload = {
             "publisher_id": publisher_id,
+            "client": self.CLIENT_TAG,
             "category": category,
             "category_v2": category_v2,
             "host": "hermes",
@@ -123,6 +127,7 @@ class Client:
     def register_install(self, *, install_id: str) -> dict[str, Any]:
         payload = {
             "install_id": install_id,
+            "client": self.CLIENT_TAG,
             "host": "hermes",
             "client_version": self.client_version,
         }

@@ -25,8 +25,13 @@ def test_on_command_enables_plugin():
 
 def test_privacy_command_says_prompts_never_leave_machine():
     text = handle_command("/adtention privacy", FakeRuntime())
-    assert "prompts" in text.lower()
-    assert "never leave" in text.lower()
+    lower = text.lower()
+    assert "prompts" in lower
+    assert "terminal output" in lower
+    assert "tool output" in lower
+    assert "client/version" in lower
+    assert "impression/creative" in lower
+    assert "never leave" in lower
 
 
 def test_unknown_command_returns_help():
