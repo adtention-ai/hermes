@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.1.2] - 2026-06-26
+
+**Corrupt local cache recovery.**
+
+This patch release makes the Hermes plugin resilient when its local SQLite state file is corrupt or replaced with non-SQLite bytes. Instead of crashing during startup, the plugin quarantines the bad cache file and recreates a fresh database.
+
+### What changed
+
+- Detects SQLite startup failures caused by a malformed or non-database local `adtention.sqlite3` file.
+- Moves the corrupt file aside as `adtention.sqlite3.corrupt-*.bak` for inspection instead of deleting it.
+- Recreates a clean state database so Hermes can keep loading the ADtention plugin.
+- Adds regression coverage for the corrupt-database recovery path.
+
+### Install / update
+
+```bash
+hermes plugins install adtention-ai/hermes --enable
+hermes gateway restart
+```
+
+ADtention for Hermes still targets recognized Telegram/Discord wait states only.
+
+### Privacy
+
+No privacy model changes. The quarantined cache is local-only and is never sent to ADtention. The plugin still never sends prompts, replies, code, chat IDs, tool arguments, terminal output, or tool output.
+
+### Release verification
+
+- Full test suite passes.
+- `python -m compileall adtention_hermes` passes.
+- `ruff check .` passes.
+- `git diff --check` passes.
+
 ## [0.1.1] - 2026-06-24
 
 **Hermes client attribution + launch polish.**

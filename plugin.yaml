@@ -1,6 +1,6 @@
 manifest_version: 1
 name: adtention
-version: "0.1.1"
+version: "0.1.2"
 description: "One quiet sponsor line for Hermes Telegram/Discord wait states that pays you while your agent works."
 author: "ADtention"
 kind: standalone

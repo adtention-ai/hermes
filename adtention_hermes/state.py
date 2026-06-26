@@ -23,9 +23,7 @@ class StateStore:
         return conn
 
     def _init_db(self) -> None:
-        with self._connect() as conn:
-            conn.executescript(
-                """
+        schema = """
                 create table if not exists settings (
                     key text primary key,
                     value text not null
@@ -54,7 +52,22 @@ class StateStore:
                     updated_at integer not null
                 );
                 """
-            )
+        try:
+            with self._connect() as conn:
+                conn.executescript(schema)
+        except sqlite3.DatabaseError as exc:
+            message = str(exc).lower()
+            if "not a database" not in message and "malformed" not in message:
+                raise
+            self._quarantine_corrupt_db()
+            with self._connect() as conn:
+                conn.executescript(schema)
+
+    def _quarantine_corrupt_db(self) -> None:
+        if not self.path.exists():
+            return
+        backup = self.path.with_name(f"{self.path.name}.corrupt-{time.strftime('%Y%m%d-%H%M%S')}-{time.time_ns()}.bak")
+        self.path.replace(backup)
 
     def get_setting(self, key: str, default: str | None = None) -> str | None:
         with self._connect() as conn:

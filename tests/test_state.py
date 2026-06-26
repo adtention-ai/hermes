@@ -44,3 +44,16 @@ def test_records_tool_names_without_arguments(tmp_path):
     store.record_tool("s1", "browser_navigate")
     assert store.get_observed_tools("s1") == ["web_search", "browser_navigate"]
     assert "secret query" not in repr(store.dump_debug())
+
+
+def test_corrupt_database_is_quarantined_and_recreated(tmp_path):
+    db_path = tmp_path / "adtention.sqlite3"
+    db_path.write_bytes(b"SQLit\x17\x03\x03not-a-sqlite-db")
+
+    store = StateStore(tmp_path)
+
+    assert store.get_or_create_install_id().startswith("hermes_")
+    assert db_path.read_bytes().startswith(b"SQLite format 3\x00")
+    backups = list(tmp_path.glob("adtention.sqlite3.corrupt-*.bak"))
+    assert len(backups) == 1
+    assert backups[0].read_bytes().startswith(b"SQLit\x17\x03\x03")
