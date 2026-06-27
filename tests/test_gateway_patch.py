@@ -1,8 +1,9 @@
 import asyncio
+import importlib
 
-from adtention_hermes.gateway_patch import wrap_adapter, wrap_gateway
+from adtention_hermes.gateway_patch import patch_gateway_status_helper, wrap_adapter, wrap_gateway
 from adtention_hermes.renderer import SPONSOR_MARKER
-from conftest import BrokenRuntime, FailingAdapter, FakeAdapter, FakeGateway, FakeResult, FakeRuntime
+from conftest import BrokenRuntime, FailingAdapter, FakeAdapter, FakeGateway, FakeResult, FakeRuntime, FakeSource
 
 
 class EnumLikePlatform:
@@ -70,6 +71,44 @@ def test_send_from_gateway_status_helper_decorates_without_metadata():
 
     assert "Neon" in adapter.sent[0][1]
     assert runtime.acked
+
+
+async def _fake_gateway_status_helper_original(adapter, chat_id, status_key, content, metadata):
+    return await adapter.send(chat_id, content, metadata=metadata)
+
+
+def test_patch_gateway_status_helper_injects_render_scope_metadata(monkeypatch):
+    gateway_run = importlib.import_module("gateway.run")
+    monkeypatch.setattr(gateway_run, "_send_or_update_status_coro", _fake_gateway_status_helper_original)
+    runtime = FakeRuntime()
+
+    patch_gateway_status_helper(runtime)
+
+    adapter = FakeAdapter(platform="telegram")
+    original_metadata = {"existing": "value"}
+
+    async def call_from_gateway_turn_frame():
+        session_key = "telegram:chat1:topic1"
+        run_generation = 7
+        event_message_id = "msg-123"
+        source = FakeSource(platform="telegram", chat_id="chat1", thread_id="topic1")
+        assert session_key and run_generation and event_message_id and source
+        return await gateway_run._send_or_update_status_coro(
+            adapter,
+            "chat1",
+            "lifecycle",
+            "⏳ Working — 3 min",
+            original_metadata,
+        )
+
+    asyncio.run(call_from_gateway_turn_frame())
+
+    metadata = adapter.sent[0][2]["metadata"]
+    assert metadata is not original_metadata
+    assert metadata["existing"] == "value"
+    assert metadata["non_conversational"] is True
+    assert metadata["adtention_render_scope"]
+    assert "adtention_render_scope" not in original_metadata
 
 
 def test_generic_send_does_not_decorate_prefix_spoofed_final_answer():
