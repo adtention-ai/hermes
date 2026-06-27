@@ -59,7 +59,10 @@ class Runtime:
 
     def command_status(self) -> dict[str, Any]:
         classification = self.state.get_classification(self.default_session_key) or {}
-        sponsor = self.state.get_sponsor(self.default_session_key)
+        sponsor = self.state.get_sponsor(
+            self.default_session_key,
+            max_age_seconds=SPONSOR_CACHE_TTL_SECONDS,
+        )
         return {
             "enabled": self.state.is_enabled(),
             "balance_usd": sponsor.get("balance_usd") if sponsor else None,
@@ -76,15 +79,27 @@ class Runtime:
     def record_tool(self, session_key: str, tool_name: str) -> None:
         self.state.record_tool(session_key, tool_name)
 
-    def get_sponsor_for_render(self, platform: str | None = None, session_key: str | None = None) -> dict[str, Any] | None:
+    def get_sponsor_for_render(
+        self,
+        platform: str | None = None,
+        session_key: str | None = None,
+        render_scope: str | None = None,
+    ) -> dict[str, Any] | None:
         if not self.is_enabled():
             return None
-        if not self.state.can_render_in_current_scope():
+        scope_id = render_scope or self.state.get_setting("current_render_scope_id")
+        if not self.state.can_render_in_scope(scope_id):
             return None
-        return self.state.get_sponsor(
-            session_key or self.default_session_key,
+        session = session_key or self.default_session_key
+        sponsor = self.state.get_sponsor(
+            session,
             max_age_seconds=SPONSOR_CACHE_TTL_SECONDS,
         )
+        impression_id = sponsor.get("impression_id") if sponsor else None
+        if impression_id and self.state.has_rendered_impression(impression_id):
+            self.state.consume_sponsor(session, impression_id)
+            return None
+        return sponsor
 
     def begin_render_scope(self, session_key: str, platform: str) -> None:
         scope_id = render_nonce(self.install_id, session_key, platform, time.time_ns())
@@ -136,9 +151,12 @@ class Runtime:
             return False
         creative_id = sponsor.get("creative_id")
         impression_id = sponsor.get("impression_id")
+        render_scope = sponsor.get("_adtention_render_scope")
         if not creative_id or not impression_id:
             return False
         if not self.state.mark_rendered_once((impression_id, creative_id, platform, message_id)):
+            self.state.mark_scope_rendered(render_scope)
+            self.state.consume_sponsor(self.default_session_key, impression_id)
             return False
         nonce = render_nonce(creative_id, platform, message_id)
         try:
@@ -150,7 +168,7 @@ class Runtime:
                 render_nonce=nonce,
             )
         finally:
-            self.state.mark_current_scope_rendered()
+            self.state.mark_scope_rendered(render_scope)
             self.state.consume_sponsor(self.default_session_key, impression_id)
         return True
 

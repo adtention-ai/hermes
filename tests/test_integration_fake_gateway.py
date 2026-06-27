@@ -93,6 +93,34 @@ def test_render_ack_consumes_cached_sponsor(tmp_path):
     assert runtime.state.get_sponsor(runtime.default_session_key) is None
 
 
+def test_duplicate_cached_impression_is_not_re_rendered(tmp_path):
+    client = FastFakeClient()
+    runtime = Runtime.for_tests(base_dir=tmp_path, client=client, publisher_id="pub_1")
+    gateway = FakeGateway()
+    sponsor = {
+        "text": "Neon: Postgres for AI agents",
+        "creative_id": "cr_1",
+        "impression_id": "imp_1",
+        "click_url": "https://api.adtention.ai/v1/click/imp_1",
+        "balance_usd": 0.42,
+    }
+
+    on_pre_gateway_dispatch(event=fake_event("Research AI papers"), gateway=gateway, runtime=runtime)
+    runtime.state.save_sponsor(runtime.default_session_key, sponsor)
+    asyncio.run(gateway.adapters["telegram"].send_or_update_status("chat1", "lifecycle", "⏳ Working — 3 min"))
+    runtime.state.save_sponsor(runtime.default_session_key, sponsor)
+    asyncio.run(gateway.adapters["telegram"].send_or_update_status(
+        "chat1",
+        "compression",
+        "⏳ Working — compressing",
+        metadata={"adtention_render_scope": "turn-b"},
+    ))
+
+    assert len(client.acks) == 1
+    assert runtime.state.get_sponsor(runtime.default_session_key) is None
+    assert "Neon" not in gateway.adapters["telegram"].status_updates[-1][1]
+
+
 def test_one_render_per_gateway_turn_even_with_new_cached_sponsor(tmp_path):
     client = FastFakeClient()
     runtime = Runtime.for_tests(base_dir=tmp_path, client=client, publisher_id="pub_1")
@@ -115,6 +143,45 @@ def test_one_render_per_gateway_turn_even_with_new_cached_sponsor(tmp_path):
         "balance_usd": 0.84,
     })
     asyncio.run(gateway.adapters["telegram"].send_or_update_status("chat1", "compression", "⏳ Working — compressing"))
+
+    assert len(client.acks) == 1
+    assert "Linear" not in gateway.adapters["telegram"].status_updates[-1][1]
+
+
+def test_overlapping_gateway_turn_does_not_reset_prior_turn_render_cap(tmp_path):
+    client = FastFakeClient()
+    runtime = Runtime.for_tests(base_dir=tmp_path, client=client, publisher_id="pub_1")
+    gateway = FakeGateway()
+
+    on_pre_gateway_dispatch(event=fake_event("Research AI papers"), gateway=gateway, runtime=runtime)
+    runtime.state.save_sponsor(runtime.default_session_key, {
+        "text": "Neon",
+        "creative_id": "cr_1",
+        "impression_id": "imp_1",
+        "click_url": "https://x/1",
+        "balance_usd": 0.42,
+    })
+    asyncio.run(gateway.adapters["telegram"].send_or_update_status(
+        "chat1",
+        "lifecycle",
+        "⏳ Working — 3 min",
+        metadata={"adtention_render_scope": "turn-a"},
+    ))
+
+    on_pre_gateway_dispatch(event=fake_event("Summarize this PDF"), gateway=gateway, runtime=runtime)
+    runtime.state.save_sponsor(runtime.default_session_key, {
+        "text": "Linear",
+        "creative_id": "cr_2",
+        "impression_id": "imp_2",
+        "click_url": "https://x/2",
+        "balance_usd": 0.84,
+    })
+    asyncio.run(gateway.adapters["telegram"].send_or_update_status(
+        "chat1",
+        "compression",
+        "⏳ Working — compressing",
+        metadata={"adtention_render_scope": "turn-a"},
+    ))
 
     assert len(client.acks) == 1
     assert "Linear" not in gateway.adapters["telegram"].status_updates[-1][1]

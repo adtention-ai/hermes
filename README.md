@@ -11,7 +11,7 @@ $0.42 · Neon: Postgres for AI agents → More Info
 
 One line. No popups. No standalone ads. No final-answer ads. No signup to earn. And **no prompts, code, chat IDs, tool arguments, terminal output, or tool output ever leave your machine**.
 
-> **Telegram and Discord wait states only.** ADtention appears only on recognized Hermes status bubbles such as `⏳ Working`, `Still working`, `Running tool`, or `Processing`. It does not modify final assistant answers, tool output, terminal output, or unsupported surfaces.
+> **Telegram and Discord wait states only.** ADtention appears only on recognized Hermes status bubbles such as `⏳ Working`, `Still working`, or `Processing`. It does not modify final assistant answers, tool/debug progress, terminal output, or unsupported surfaces.
 
 ---
 

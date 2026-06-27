@@ -37,6 +37,11 @@ class StateStore:
                     render_key text primary key,
                     created_at integer not null
                 );
+                create table if not exists render_scopes (
+                    scope_id text primary key,
+                    rendered integer not null default 0,
+                    updated_at integer not null
+                );
                 create table if not exists tools (
                     id integer primary key autoincrement,
                     session_key text not null,
@@ -164,21 +169,73 @@ class StateStore:
         except sqlite3.IntegrityError:
             return False
 
+    def has_rendered_impression(self, impression_id: object) -> bool:
+        if not impression_id:
+            return False
+        render_key = self._render_key(("impression", impression_id))
+        with self._connect() as conn:
+            row = conn.execute(
+                "select 1 from rendered where render_key = ?",
+                (render_key,),
+            ).fetchone()
+        return row is not None
+
     def begin_render_scope(self, scope_id: str) -> None:
         scope_id = str(scope_id or "").strip()
         if not scope_id:
             return
-        existing = self.get_setting("render_scope_id")
-        if existing == scope_id:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                insert into render_scopes(scope_id, rendered, updated_at)
+                values(?, 0, ?)
+                on conflict(scope_id) do update set updated_at = excluded.updated_at
+                """,
+                (scope_id, int(time.time())),
+            )
+        self.set_setting("current_render_scope_id", scope_id)
+
+    def can_render_in_scope(self, scope_id: str | None) -> bool:
+        scope_id = str(scope_id or "").strip()
+        if not scope_id:
+            return self.can_render_in_current_scope()
+        with self._connect() as conn:
+            row = conn.execute(
+                "select rendered from render_scopes where scope_id = ?",
+                (scope_id,),
+            ).fetchone()
+        return not row or int(row["rendered"]) != 1
+
+    def mark_scope_rendered(self, scope_id: str | None) -> None:
+        scope_id = str(scope_id or "").strip()
+        if not scope_id:
+            self.mark_current_scope_rendered()
             return
-        self.set_setting("render_scope_id", scope_id)
-        self.set_setting("render_scope_rendered", "0")
+        with self._connect() as conn:
+            conn.execute(
+                """
+                insert into render_scopes(scope_id, rendered, updated_at)
+                values(?, 1, ?)
+                on conflict(scope_id) do update set rendered = 1, updated_at = excluded.updated_at
+                """,
+                (scope_id, int(time.time())),
+            )
 
     def can_render_in_current_scope(self) -> bool:
-        return self.get_setting("render_scope_rendered", "0") != "1"
+        scope_id = self.get_setting("current_render_scope_id")
+        if not scope_id:
+            return True
+        with self._connect() as conn:
+            row = conn.execute(
+                "select rendered from render_scopes where scope_id = ?",
+                (scope_id,),
+            ).fetchone()
+        return not row or int(row["rendered"]) != 1
 
     def mark_current_scope_rendered(self) -> None:
-        self.set_setting("render_scope_rendered", "1")
+        scope_id = self.get_setting("current_render_scope_id")
+        if scope_id:
+            self.mark_scope_rendered(scope_id)
 
     def can_refresh_sponsor(self, *, now: int | None = None, min_seconds: int = 15) -> bool:
         now = int(time.time()) if now is None else int(now)
