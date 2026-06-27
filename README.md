@@ -94,18 +94,6 @@ The plugin runs in compatibility mode: it works without a Hermes core PR by wrap
 
 Message edits replace the plugin’s previous line instead of stacking duplicate sponsor lines. Render acknowledgments happen only after a platform send/edit succeeds; they are best-effort, timeout-bounded, and caught so billing telemetry cannot break normal Hermes delivery. The client still is not a fraud boundary: the ADtention backend must keep impressions pending until a valid render acknowledgment, credit at most once per `impression_id`, and apply publisher/install/account/IP risk controls before payout.
 
-### Can ADtention know whether the user actually saw it?
-
-Not reliably from Telegram or Discord bot APIs. A successful `send`/`edit` proves platform delivery, not human viewability. Telegram Bot API does not expose read receipts for bot messages in normal private/group chats, and Discord bots do not get per-user read receipts.
-
-Useful signals are weaker:
-
-- A `More Info` click is positive engagement and can be tracked server-side via the click URL.
-- Later user activity in the same chat can be a coarse risk signal that the user was active near the impression.
-- Channel-specific counters may exist on some platforms, but they are not portable to Hermes DM/group wait states.
-
-Treat these as fraud/risk signals, not as proof of view. Billing should remain based on server-validated pending impressions and idempotent render acknowledgments, with clicks/activity used to down-rank suspicious farms rather than to assert that a specific user saw a message.
-
 ---
 
 ## `/adtention`
