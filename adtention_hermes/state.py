@@ -95,7 +95,8 @@ class StateStore:
     def set_publisher_id(self, publisher_id: str) -> None:
         self.set_setting("publisher_id", publisher_id)
 
-    def save_sponsor(self, session_key: str, sponsor: dict[str, Any]) -> None:
+    def save_sponsor(self, session_key: str, sponsor: dict[str, Any], *, now: int | None = None) -> None:
+        updated_at = int(time.time()) if now is None else int(now)
         with self._connect() as conn:
             conn.execute(
                 """
@@ -103,13 +104,37 @@ class StateStore:
                 values(?, ?, ?)
                 on conflict(session_key) do update set payload = excluded.payload, updated_at = excluded.updated_at
                 """,
-                (session_key, json.dumps(sponsor, sort_keys=True), int(time.time())),
+                (session_key, json.dumps(sponsor, sort_keys=True), updated_at),
             )
 
-    def get_sponsor(self, session_key: str) -> dict[str, Any] | None:
+    def get_sponsor(self, session_key: str, *, max_age_seconds: int | None = None, now: int | None = None) -> dict[str, Any] | None:
+        current_time = int(time.time()) if now is None else int(now)
+        with self._connect() as conn:
+            row = conn.execute(
+                "select payload, updated_at from sponsor_cache where session_key = ?",
+                (session_key,),
+            ).fetchone()
+            if not row:
+                return None
+            if max_age_seconds is not None and current_time - int(row["updated_at"]) > int(max_age_seconds):
+                conn.execute("delete from sponsor_cache where session_key = ?", (session_key,))
+                return None
+        return json.loads(row["payload"])
+
+    def consume_sponsor(self, session_key: str, impression_id: str) -> None:
+        """Remove the cached sponsor only if it is still the rendered impression."""
+        if not impression_id:
+            return
         with self._connect() as conn:
             row = conn.execute("select payload from sponsor_cache where session_key = ?", (session_key,)).fetchone()
-        return json.loads(row["payload"]) if row else None
+            if not row:
+                return
+            try:
+                payload = json.loads(row["payload"])
+            except (TypeError, json.JSONDecodeError):
+                payload = {}
+            if str(payload.get("impression_id") or "") == str(impression_id):
+                conn.execute("delete from sponsor_cache where session_key = ?", (session_key,))
 
     def is_enabled(self) -> bool:
         return self.get_setting("enabled", "1") != "0"
@@ -123,7 +148,12 @@ class StateStore:
         return render_nonce(*key)
 
     def mark_rendered_once(self, key: tuple[object, ...]) -> bool:
-        render_key = self._render_key(key)
+        # New callers pass (impression_id, creative_id, platform, message_id).
+        # Dedupe on impression_id so a malicious client cannot credit the same
+        # served impression repeatedly by changing local/platform message IDs.
+        # Older callers that only pass (creative_id, platform, message_id) keep
+        # their previous local-message dedupe semantics.
+        render_key = self._render_key(("impression", key[0])) if len(key) >= 4 and key[0] else self._render_key(key)
         try:
             with self._connect() as conn:
                 conn.execute(
@@ -133,6 +163,22 @@ class StateStore:
             return True
         except sqlite3.IntegrityError:
             return False
+
+    def begin_render_scope(self, scope_id: str) -> None:
+        scope_id = str(scope_id or "").strip()
+        if not scope_id:
+            return
+        existing = self.get_setting("render_scope_id")
+        if existing == scope_id:
+            return
+        self.set_setting("render_scope_id", scope_id)
+        self.set_setting("render_scope_rendered", "0")
+
+    def can_render_in_current_scope(self) -> bool:
+        return self.get_setting("render_scope_rendered", "0") != "1"
+
+    def mark_current_scope_rendered(self) -> None:
+        self.set_setting("render_scope_rendered", "1")
 
     def can_refresh_sponsor(self, *, now: int | None = None, min_seconds: int = 15) -> bool:
         now = int(time.time()) if now is None else int(now)

@@ -70,10 +70,12 @@ Want to inspect the privacy model from chat?
 
 ## How the money works
 
-- You earn a small amount when a sponsor segment is served on real Hermes work, **at most once every 15 seconds**.
+- Sponsor fetches are locally rate-limited to **at most once every 15 seconds** and rendered credit is locally capped to **one sponsor impression per gateway turn**.
 - Idle chats earn nothing. Leaving the gateway online overnight does not farm impressions.
-- Rapid status edits do not duplicate credit; the plugin replaces its previous segment on edits.
-- An impression is acknowledged only after a decorated wait-state message is successfully sent or edited.
+- Rapid status edits do not duplicate credit; the plugin replaces its previous segment on edits and dedupes render acknowledgments by `impression_id`.
+- An impression is acknowledged only after a decorated wait-state message is successfully sent or edited, then the cached sponsor is consumed so the same served impression is not reused.
+- Cached sponsors expire quickly if they are not rendered.
+- Tool/debug progress messages are not sponsored as billable wait states.
 - Your balance accrues to the local install/publisher ID and is shown in the sponsor line.
 - Cashing out is coming: when it is available, you will create an account, attach a payout method, and withdraw past a threshold.
 
@@ -90,7 +92,19 @@ Two parts, deliberately kept separate so sponsor selection never blocks wait-sta
 
 The plugin runs in compatibility mode: it works without a Hermes core PR by wrapping Telegram/Discord gateway adapter send/edit methods at runtime. The wrapper only touches recognized wait-state/status text. Final assistant answers pass through unchanged.
 
-Message edits replace the plugin’s previous line instead of stacking duplicate sponsor lines. Render acknowledgments happen only after a platform send/edit succeeds; they are best-effort, timeout-bounded, and caught so billing telemetry cannot break normal Hermes delivery.
+Message edits replace the plugin’s previous line instead of stacking duplicate sponsor lines. Render acknowledgments happen only after a platform send/edit succeeds; they are best-effort, timeout-bounded, and caught so billing telemetry cannot break normal Hermes delivery. The client still is not a fraud boundary: the ADtention backend must keep impressions pending until a valid render acknowledgment, credit at most once per `impression_id`, and apply publisher/install/account/IP risk controls before payout.
+
+### Can ADtention know whether the user actually saw it?
+
+Not reliably from Telegram or Discord bot APIs. A successful `send`/`edit` proves platform delivery, not human viewability. Telegram Bot API does not expose read receipts for bot messages in normal private/group chats, and Discord bots do not get per-user read receipts.
+
+Useful signals are weaker:
+
+- A `More Info` click is positive engagement and can be tracked server-side via the click URL.
+- Later user activity in the same chat can be a coarse risk signal that the user was active near the impression.
+- Channel-specific counters may exist on some platforms, but they are not portable to Hermes DM/group wait states.
+
+Treat these as fraud/risk signals, not as proof of view. Billing should remain based on server-validated pending impressions and idempotent render acknowledgments, with clicks/activity used to down-rank suspicious farms rather than to assert that a specific user saw a message.
 
 ---
 

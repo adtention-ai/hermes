@@ -18,6 +18,7 @@ from .privacy import render_nonce
 from .state import StateStore
 
 _RUNTIME = None
+SPONSOR_CACHE_TTL_SECONDS = 120
 
 
 def _hermes_home() -> Path:
@@ -78,7 +79,16 @@ class Runtime:
     def get_sponsor_for_render(self, platform: str | None = None, session_key: str | None = None) -> dict[str, Any] | None:
         if not self.is_enabled():
             return None
-        return self.state.get_sponsor(session_key or self.default_session_key)
+        if not self.state.can_render_in_current_scope():
+            return None
+        return self.state.get_sponsor(
+            session_key or self.default_session_key,
+            max_age_seconds=SPONSOR_CACHE_TTL_SECONDS,
+        )
+
+    def begin_render_scope(self, session_key: str, platform: str) -> None:
+        scope_id = render_nonce(self.install_id, session_key, platform, time.time_ns())
+        self.state.begin_render_scope(scope_id)
 
     def prefetch_sponsor_async(self, session_key: str, classification: Any, platform: str) -> None:
         if not self.is_enabled():
@@ -128,16 +138,20 @@ class Runtime:
         impression_id = sponsor.get("impression_id")
         if not creative_id or not impression_id:
             return False
-        if not self.state.mark_rendered_once((creative_id, platform, message_id)):
+        if not self.state.mark_rendered_once((impression_id, creative_id, platform, message_id)):
             return False
         nonce = render_nonce(creative_id, platform, message_id)
-        self.client.ack_rendered(
-            publisher_id=self.publisher_id,
-            impression_id=impression_id,
-            creative_id=creative_id,
-            platform=platform,
-            render_nonce=nonce,
-        )
+        try:
+            self.client.ack_rendered(
+                publisher_id=self.publisher_id,
+                impression_id=impression_id,
+                creative_id=creative_id,
+                platform=platform,
+                render_nonce=nonce,
+            )
+        finally:
+            self.state.mark_current_scope_rendered()
+            self.state.consume_sponsor(self.default_session_key, impression_id)
         return True
 
 
@@ -231,6 +245,8 @@ def on_pre_gateway_dispatch(*, event: Any = None, gateway: Any = None, runtime: 
 
     source = getattr(event, "source", None)
     session_key = _session_key(event)
+    if hasattr(rt, "begin_render_scope"):
+        rt.begin_render_scope(session_key, platform)
     classification = rt.classify_and_store(
         session_key,
         user_message=text,

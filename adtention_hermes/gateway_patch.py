@@ -107,6 +107,9 @@ def _decorate_call(adapter: Any, method_name: str, original: Callable, args: tup
     if platform not in SUPPORTED_PLATFORMS:
         return args, kwargs, None
 
+    if not _is_explicit_status_call(method_name, kwargs):
+        return args, kwargs, None
+
     locator = _find_text_locator(method_name, args, kwargs)
     if locator is None:
         return args, kwargs, None
@@ -144,6 +147,40 @@ def _decorate_call(adapter: Any, method_name: str, original: Callable, args: tup
     if can_finalize_telegram_edit:
         kwargs["finalize"] = True
     return tuple(mutable_args), kwargs, sponsor
+
+
+def _is_explicit_status_call(method_name: str, kwargs: dict) -> bool:
+    """Only decorate actual gateway status paths, not arbitrary sends.
+
+    ``send_or_update_status`` is Hermes' explicit status helper. Some adapters
+    without that helper fall back to plain ``send``; those sends must either opt
+    in via status metadata or come directly from Hermes' status helper so a user
+    cannot spoof billing by making final content start with "⏳ Working".
+    """
+    if method_name == "send_or_update_status":
+        return True
+    metadata = kwargs.get("metadata")
+    if isinstance(metadata, dict) and any(
+        bool(metadata.get(key))
+        for key in ("non_conversational", "status", "status_key", "hermes_status")
+    ):
+        return True
+    return _called_from_gateway_status_helper()
+
+
+def _called_from_gateway_status_helper(*, max_depth: int = 8) -> bool:
+    frame = inspect.currentframe()
+    try:
+        frame = frame.f_back if frame is not None else None
+        depth = 0
+        while frame is not None and depth < max_depth:
+            if frame.f_code.co_name == "_send_or_update_status_coro":
+                return True
+            frame = frame.f_back
+            depth += 1
+        return False
+    finally:
+        del frame
 
 
 def _find_text_locator(method_name: str, args: tuple, kwargs: dict):

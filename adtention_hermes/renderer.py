@@ -27,11 +27,18 @@ _WAIT_PREFIXES = (
     "working —",
     "working -",
     "still working",
+    "processing —",
+    "processing -",
+)
+
+# Tool/debug progress can fire many times per turn and is easier to spoof than
+# lifecycle heartbeats. Until the API has an explicit non-billable render class,
+# keep these messages unsponsored instead of crediting them like user-visible
+# waiting heartbeats.
+_NON_BILLABLE_PREFIXES = (
     "tool progress",
     "running tool",
     "executing tool",
-    "processing —",
-    "processing -",
 )
 
 
@@ -58,6 +65,8 @@ def is_wait_state(text: str) -> bool:
     if not clean:
         return False
     first_line = clean.splitlines()[0].strip().lower()
+    if any(first_line.startswith(prefix) for prefix in _NON_BILLABLE_PREFIXES):
+        return False
     return any(first_line.startswith(prefix) for prefix in _WAIT_PREFIXES)
 
 

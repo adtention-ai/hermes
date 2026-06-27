@@ -18,8 +18,8 @@ class LegacyTelegramAdapter:
     def __init__(self):
         self.edited = []
 
-    async def edit_message(self, chat_id, message_id, text):
-        self.edited.append((chat_id, message_id, text, {}))
+    async def edit_message(self, chat_id, message_id, text, metadata=None):
+        self.edited.append((chat_id, message_id, text, {"metadata": metadata} if metadata is not None else {}))
         return FakeResult(True, message_id)
 
 
@@ -40,12 +40,12 @@ def test_wrap_gateway_wraps_all_supported_adapters():
     assert gateway.adapters["discord"]._adtention_wrapped is True
 
 
-def test_send_decorates_wait_state():
+def test_send_with_status_metadata_decorates_wait_state():
     adapter = FakeAdapter()
     runtime = FakeRuntime()
     wrap_adapter(adapter, runtime)
 
-    result = asyncio.run(adapter.send("chat1", "⏳ Working — 3 min"))
+    result = asyncio.run(adapter.send("chat1", "⏳ Working — 3 min", metadata={"non_conversational": True}))
 
     sent_text = adapter.sent[0][1]
     assert "⏳ Working — 3 min" in sent_text
@@ -57,12 +57,38 @@ def test_send_decorates_wait_state():
     assert result.success is True
 
 
+async def _send_or_update_status_coro(adapter, chat_id, status_key, content):
+    return await adapter.send(chat_id, content)
+
+
+def test_send_from_gateway_status_helper_decorates_without_metadata():
+    adapter = FakeAdapter(platform="discord")
+    runtime = FakeRuntime()
+    wrap_adapter(adapter, runtime)
+
+    asyncio.run(_send_or_update_status_coro(adapter, "channel1", "lifecycle", "⏳ Working — 3 min"))
+
+    assert "Neon" in adapter.sent[0][1]
+    assert runtime.acked
+
+
+def test_generic_send_does_not_decorate_prefix_spoofed_final_answer():
+    adapter = FakeAdapter()
+    runtime = FakeRuntime()
+    wrap_adapter(adapter, runtime)
+
+    asyncio.run(adapter.send("chat1", "⏳ Working — this is actually final content"))
+
+    assert adapter.sent[0][1] == "⏳ Working — this is actually final content"
+    assert runtime.acked == []
+
+
 def test_send_does_not_decorate_unsupported_platform():
     adapter = FakeAdapter(platform="slack")
     runtime = FakeRuntime()
     wrap_adapter(adapter, runtime)
 
-    asyncio.run(adapter.send("chat1", "⏳ Working — 3 min"))
+    asyncio.run(adapter.send("chat1", "⏳ Working — 3 min", metadata={"non_conversational": True}))
 
     assert "Neon" not in adapter.sent[0][1]
     assert runtime.acked == []
@@ -73,7 +99,7 @@ def test_ack_uses_platform_enum_value_not_repr():
     runtime = FakeRuntime()
     wrap_adapter(adapter, runtime)
 
-    asyncio.run(adapter.send("chat1", "⏳ Working — 3 min"))
+    asyncio.run(adapter.send("chat1", "⏳ Working — 3 min", metadata={"non_conversational": True}))
 
     assert runtime.acked[0]["platform"] == "telegram"
 
@@ -93,7 +119,7 @@ def test_send_decorates_real_hermes_content_keyword():
     runtime = FakeRuntime()
     wrap_adapter(adapter, runtime)
 
-    asyncio.run(adapter.send("chat1", text="ignored by fake", content="⏳ Working — 3 min"))
+    asyncio.run(adapter.send("chat1", text="ignored by fake", content="⏳ Working — 3 min", metadata={"non_conversational": True}))
 
     sent_kwargs = adapter.sent[0][2]
     assert "Neon" in sent_kwargs["content"]
@@ -114,10 +140,21 @@ def test_edit_decorates_real_hermes_content_keyword():
     runtime = FakeRuntime()
     wrap_adapter(adapter, runtime)
 
-    asyncio.run(adapter.edit_message("chat1", "m1", text="ignored by fake", content="⏳ Working — 3 min"))
+    asyncio.run(adapter.edit_message("chat1", "m1", text="ignored by fake", content="⏳ Working — 3 min", metadata={"non_conversational": True}))
 
     assert "Neon" in adapter.edited[0][3]["content"]
     assert adapter.edited[0][3]["finalize"] is True
+
+
+def test_generic_edit_does_not_decorate_without_status_metadata():
+    adapter = FakeAdapter()
+    runtime = FakeRuntime()
+    wrap_adapter(adapter, runtime)
+
+    asyncio.run(adapter.edit_message("chat1", "m1", "⏳ Working — final answer edit"))
+
+    assert adapter.edited[0][2] == "⏳ Working — final answer edit"
+    assert runtime.acked == []
 
 
 def test_telegram_wait_state_edit_requests_markdown_finalize():
@@ -125,7 +162,7 @@ def test_telegram_wait_state_edit_requests_markdown_finalize():
     runtime = FakeRuntime()
     wrap_adapter(adapter, runtime)
 
-    asyncio.run(adapter.edit_message("chat1", "m1", "⏳ Working — 3 min"))
+    asyncio.run(adapter.edit_message("chat1", "m1", "⏳ Working — 3 min", metadata={"non_conversational": True}))
 
     assert adapter.edited[0][3]["finalize"] is True
 
@@ -135,7 +172,7 @@ def test_legacy_telegram_edit_without_finalize_kw_does_not_break_delivery():
     runtime = FakeRuntime()
     wrap_adapter(adapter, runtime)
 
-    asyncio.run(adapter.edit_message("chat1", "m1", "⏳ Working — 3 min"))
+    asyncio.run(adapter.edit_message("chat1", "m1", "⏳ Working — 3 min", metadata={"non_conversational": True}))
 
     assert "Neon" in adapter.edited[0][2]
 
@@ -145,7 +182,7 @@ def test_edit_replaces_existing_segment_not_duplicate():
     runtime = FakeRuntime()
     wrap_adapter(adapter, runtime)
 
-    asyncio.run(adapter.edit_message("chat1", "m1", "⏳ Working — 3 min\n⊕ ADtention · Old"))
+    asyncio.run(adapter.edit_message("chat1", "m1", "⏳ Working — 3 min\n⊕ ADtention · Old", metadata={"non_conversational": True}))
     text = adapter.edited[0][2]
 
     assert text.count(SPONSOR_MARKER) == 1
@@ -158,7 +195,7 @@ def test_failed_send_does_not_ack_impression():
     runtime = FakeRuntime()
     wrap_adapter(adapter, runtime)
 
-    asyncio.run(adapter.send("chat1", "⏳ Working — 3 min"))
+    asyncio.run(adapter.send("chat1", "⏳ Working — 3 min", metadata={"non_conversational": True}))
 
     assert runtime.acked == []
 
@@ -168,8 +205,8 @@ def test_successful_send_and_edit_ack_once_for_same_message():
     runtime = FakeRuntime()
     wrap_adapter(adapter, runtime)
 
-    asyncio.run(adapter.send("chat1", "⏳ Working — 3 min"))
-    asyncio.run(adapter.edit_message("chat1", "m1", "⏳ Working — 4 min"))
+    asyncio.run(adapter.send("chat1", "⏳ Working — 3 min", metadata={"non_conversational": True}))
+    asyncio.run(adapter.edit_message("chat1", "m1", "⏳ Working — 4 min", metadata={"non_conversational": True}))
 
     assert len(runtime.acked) == 1
 

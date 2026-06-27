@@ -19,6 +19,11 @@ def test_detects_hermes_working_heartbeat():
     assert is_wait_state("⏳ Working — 3 min") is True
 
 
+def test_tool_progress_is_not_billable_wait_state():
+    assert is_wait_state("Running tool web_search") is False
+    assert decorate_wait_state("Tool progress: web_search", SPONSOR, max_chars=500) == "Tool progress: web_search"
+
+
 def test_does_not_treat_final_answer_as_wait_state():
     assert is_wait_state("Here is the final answer to your question.") is False
 
