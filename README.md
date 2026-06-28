@@ -208,19 +208,14 @@ The v1 implementation is stdlib-only at runtime.
 
 ### Release
 
-Releases are cut from version tags and published by GitHub Actions with curated notes from [`CHANGELOG.md`](CHANGELOG.md).
+Releases are cut automatically when a version bump lands on `main`. GitHub Actions creates the matching version tag, verifies the release, and publishes curated notes from [`CHANGELOG.md`](CHANGELOG.md).
 
 1. Update the version in `pyproject.toml`, `plugin.yaml`, and the default client version in `adtention_hermes/client.py`.
 2. Add a matching `CHANGELOG.md` section such as `## [0.1.1] - 2026-06-24`.
 3. Run the full verification suite above.
-4. Commit, tag, and push:
+4. Open and merge the PR into `main`.
 
-```bash
-git tag v0.1.1
-git push origin main v0.1.1
-```
-
-The release workflow verifies metadata, runs tests/lint/compile checks, builds the package, extracts the matching changelog section, uploads the distribution artifact, and creates or updates the GitHub Release body.
+The release workflow creates the `vX.Y.Z` tag on `main` merges. If that tag already exists, the workflow fails and asks for a version bump instead of overwriting an existing release. Manual tag and workflow-dispatch releases are still supported for maintainers.
 
 ---
 

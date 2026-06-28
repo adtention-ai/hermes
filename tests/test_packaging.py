@@ -39,7 +39,12 @@ def test_ci_workflow_runs_pytest():
 
 def test_release_workflow_builds_and_publishes_github_release():
     text = Path(".github/workflows/release.yml").read_text()
+    assert "branches:" in text
+    assert "- main" in text
     assert "v*.*.*" in text
+    assert "Create release tag for main merge" in text
+    assert "git tag -a" in text
+    assert "Bump pyproject.toml" in text
     assert "python -m build" in text
     assert "scripts/extract_changelog.py" in text
     assert "--notes-file release-notes.md" in text
