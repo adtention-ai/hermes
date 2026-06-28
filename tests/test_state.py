@@ -23,11 +23,39 @@ def test_opt_out_disables_rendering(tmp_path):
     assert store.is_enabled() is True
 
 
-def test_render_dedupe_by_creative_platform_message(tmp_path):
+def test_render_dedupe_by_impression_even_across_messages(tmp_path):
     store = StateStore(tmp_path)
-    key = ("cr_1", "telegram", "msg_1")
-    assert store.mark_rendered_once(key) is True
-    assert store.mark_rendered_once(key) is False
+    assert store.mark_rendered_once(("imp_1", "cr_1", "telegram", "msg_1")) is True
+    assert store.mark_rendered_once(("imp_1", "cr_1", "telegram", "msg_2")) is False
+    assert store.mark_rendered_once(("imp_2", "cr_1", "telegram", "msg_2")) is True
+
+
+def test_consume_sponsor_removes_cached_impression(tmp_path):
+    store = StateStore(tmp_path)
+    store.save_sponsor("s1", {"creative_id": "cr_1", "impression_id": "imp_1", "text": "Neon"})
+
+    store.consume_sponsor("s1", "imp_1")
+
+    assert store.get_sponsor("s1") is None
+
+
+def test_sponsor_cache_respects_ttl(tmp_path):
+    store = StateStore(tmp_path)
+    store.save_sponsor("s1", {"creative_id": "cr_1", "impression_id": "imp_1", "text": "Neon"}, now=1000)
+
+    assert store.get_sponsor("s1", max_age_seconds=60, now=1059)["impression_id"] == "imp_1"
+    assert store.get_sponsor("s1", max_age_seconds=60, now=1061) is None
+
+
+def test_render_scope_caps_one_impression_per_turn(tmp_path):
+    store = StateStore(tmp_path)
+    store.begin_render_scope("turn_1")
+
+    assert store.can_render_in_current_scope() is True
+    store.mark_current_scope_rendered()
+    assert store.can_render_in_current_scope() is False
+    store.begin_render_scope("turn_2")
+    assert store.can_render_in_current_scope() is True
 
 
 def test_frequency_cap_blocks_fast_refreshes(tmp_path):

@@ -37,6 +37,11 @@ class StateStore:
                     render_key text primary key,
                     created_at integer not null
                 );
+                create table if not exists render_scopes (
+                    scope_id text primary key,
+                    rendered integer not null default 0,
+                    updated_at integer not null
+                );
                 create table if not exists tools (
                     id integer primary key autoincrement,
                     session_key text not null,
@@ -95,7 +100,8 @@ class StateStore:
     def set_publisher_id(self, publisher_id: str) -> None:
         self.set_setting("publisher_id", publisher_id)
 
-    def save_sponsor(self, session_key: str, sponsor: dict[str, Any]) -> None:
+    def save_sponsor(self, session_key: str, sponsor: dict[str, Any], *, now: int | None = None) -> None:
+        updated_at = int(time.time()) if now is None else int(now)
         with self._connect() as conn:
             conn.execute(
                 """
@@ -103,13 +109,37 @@ class StateStore:
                 values(?, ?, ?)
                 on conflict(session_key) do update set payload = excluded.payload, updated_at = excluded.updated_at
                 """,
-                (session_key, json.dumps(sponsor, sort_keys=True), int(time.time())),
+                (session_key, json.dumps(sponsor, sort_keys=True), updated_at),
             )
 
-    def get_sponsor(self, session_key: str) -> dict[str, Any] | None:
+    def get_sponsor(self, session_key: str, *, max_age_seconds: int | None = None, now: int | None = None) -> dict[str, Any] | None:
+        current_time = int(time.time()) if now is None else int(now)
+        with self._connect() as conn:
+            row = conn.execute(
+                "select payload, updated_at from sponsor_cache where session_key = ?",
+                (session_key,),
+            ).fetchone()
+            if not row:
+                return None
+            if max_age_seconds is not None and current_time - int(row["updated_at"]) > int(max_age_seconds):
+                conn.execute("delete from sponsor_cache where session_key = ?", (session_key,))
+                return None
+        return json.loads(row["payload"])
+
+    def consume_sponsor(self, session_key: str, impression_id: str) -> None:
+        """Remove the cached sponsor only if it is still the rendered impression."""
+        if not impression_id:
+            return
         with self._connect() as conn:
             row = conn.execute("select payload from sponsor_cache where session_key = ?", (session_key,)).fetchone()
-        return json.loads(row["payload"]) if row else None
+            if not row:
+                return
+            try:
+                payload = json.loads(row["payload"])
+            except (TypeError, json.JSONDecodeError):
+                payload = {}
+            if str(payload.get("impression_id") or "") == str(impression_id):
+                conn.execute("delete from sponsor_cache where session_key = ?", (session_key,))
 
     def is_enabled(self) -> bool:
         return self.get_setting("enabled", "1") != "0"
@@ -123,7 +153,12 @@ class StateStore:
         return render_nonce(*key)
 
     def mark_rendered_once(self, key: tuple[object, ...]) -> bool:
-        render_key = self._render_key(key)
+        # New callers pass (impression_id, creative_id, platform, message_id).
+        # Dedupe on impression_id so a malicious client cannot credit the same
+        # served impression repeatedly by changing local/platform message IDs.
+        # Older callers that only pass (creative_id, platform, message_id) keep
+        # their previous local-message dedupe semantics.
+        render_key = self._render_key(("impression", key[0])) if len(key) >= 4 and key[0] else self._render_key(key)
         try:
             with self._connect() as conn:
                 conn.execute(
@@ -133,6 +168,74 @@ class StateStore:
             return True
         except sqlite3.IntegrityError:
             return False
+
+    def has_rendered_impression(self, impression_id: object) -> bool:
+        if not impression_id:
+            return False
+        render_key = self._render_key(("impression", impression_id))
+        with self._connect() as conn:
+            row = conn.execute(
+                "select 1 from rendered where render_key = ?",
+                (render_key,),
+            ).fetchone()
+        return row is not None
+
+    def begin_render_scope(self, scope_id: str) -> None:
+        scope_id = str(scope_id or "").strip()
+        if not scope_id:
+            return
+        with self._connect() as conn:
+            conn.execute(
+                """
+                insert into render_scopes(scope_id, rendered, updated_at)
+                values(?, 0, ?)
+                on conflict(scope_id) do update set updated_at = excluded.updated_at
+                """,
+                (scope_id, int(time.time())),
+            )
+        self.set_setting("current_render_scope_id", scope_id)
+
+    def can_render_in_scope(self, scope_id: str | None) -> bool:
+        scope_id = str(scope_id or "").strip()
+        if not scope_id:
+            return self.can_render_in_current_scope()
+        with self._connect() as conn:
+            row = conn.execute(
+                "select rendered from render_scopes where scope_id = ?",
+                (scope_id,),
+            ).fetchone()
+        return not row or int(row["rendered"]) != 1
+
+    def mark_scope_rendered(self, scope_id: str | None) -> None:
+        scope_id = str(scope_id or "").strip()
+        if not scope_id:
+            self.mark_current_scope_rendered()
+            return
+        with self._connect() as conn:
+            conn.execute(
+                """
+                insert into render_scopes(scope_id, rendered, updated_at)
+                values(?, 1, ?)
+                on conflict(scope_id) do update set rendered = 1, updated_at = excluded.updated_at
+                """,
+                (scope_id, int(time.time())),
+            )
+
+    def can_render_in_current_scope(self) -> bool:
+        scope_id = self.get_setting("current_render_scope_id")
+        if not scope_id:
+            return True
+        with self._connect() as conn:
+            row = conn.execute(
+                "select rendered from render_scopes where scope_id = ?",
+                (scope_id,),
+            ).fetchone()
+        return not row or int(row["rendered"]) != 1
+
+    def mark_current_scope_rendered(self) -> None:
+        scope_id = self.get_setting("current_render_scope_id")
+        if scope_id:
+            self.mark_scope_rendered(scope_id)
 
     def can_refresh_sponsor(self, *, now: int | None = None, min_seconds: int = 15) -> bool:
         now = int(time.time()) if now is None else int(now)

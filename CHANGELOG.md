@@ -1,5 +1,19 @@
 # Changelog
 
+## [Unreleased]
+
+**Client-side anti-farming hardening.**
+
+### What changed
+
+- Dedupes render acknowledgments by `impression_id`, not by mutable platform message ID.
+- Consumes the cached sponsor after the first successful render acknowledgment attempt.
+- Adds a short sponsor cache TTL so stale served impressions are not reused indefinitely.
+- Caps sponsored renders to one impression per gateway turn.
+- Requires an explicit gateway status path or status metadata before decorating `send`/`edit_message`, preventing prefix-spoofed final messages from being sponsored.
+- Stops treating tool/debug progress messages as billable wait-state sponsor surfaces.
+- Installs a default daily plugin auto-updater for git checkouts, with `/adtention autoupdate off` to disable it.
+
 ## [0.1.2] - 2026-06-26
 
 **Corrupt local cache recovery.**

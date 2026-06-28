@@ -13,11 +13,14 @@ from typing import Any
 from .classifier import classify_turn
 from .client import Client
 from .commands import handle_command
+from . import autoupdate as autoupdate_module
+from .autoupdate import ensure_default_autoupdate
 from .gateway_patch import _platform_name, wrap_gateway
 from .privacy import render_nonce
 from .state import StateStore
 
 _RUNTIME = None
+SPONSOR_CACHE_TTL_SECONDS = 120
 
 
 def _hermes_home() -> Path:
@@ -56,9 +59,21 @@ class Runtime:
     def set_enabled(self, enabled: bool) -> None:
         self.state.set_enabled(enabled)
 
+    def autoupdate_status(self) -> dict[str, Any]:
+        return autoupdate_module.autoupdate_status()
+
+    def enable_autoupdate(self) -> dict[str, Any]:
+        return autoupdate_module.enable_autoupdate()
+
+    def disable_autoupdate(self) -> dict[str, Any]:
+        return autoupdate_module.disable_autoupdate()
+
     def command_status(self) -> dict[str, Any]:
         classification = self.state.get_classification(self.default_session_key) or {}
-        sponsor = self.state.get_sponsor(self.default_session_key)
+        sponsor = self.state.get_sponsor(
+            self.default_session_key,
+            max_age_seconds=SPONSOR_CACHE_TTL_SECONDS,
+        )
         return {
             "enabled": self.state.is_enabled(),
             "balance_usd": sponsor.get("balance_usd") if sponsor else None,
@@ -75,10 +90,31 @@ class Runtime:
     def record_tool(self, session_key: str, tool_name: str) -> None:
         self.state.record_tool(session_key, tool_name)
 
-    def get_sponsor_for_render(self, platform: str | None = None, session_key: str | None = None) -> dict[str, Any] | None:
+    def get_sponsor_for_render(
+        self,
+        platform: str | None = None,
+        session_key: str | None = None,
+        render_scope: str | None = None,
+    ) -> dict[str, Any] | None:
         if not self.is_enabled():
             return None
-        return self.state.get_sponsor(session_key or self.default_session_key)
+        scope_id = render_scope or self.state.get_setting("current_render_scope_id")
+        if not self.state.can_render_in_scope(scope_id):
+            return None
+        session = session_key or self.default_session_key
+        sponsor = self.state.get_sponsor(
+            session,
+            max_age_seconds=SPONSOR_CACHE_TTL_SECONDS,
+        )
+        impression_id = sponsor.get("impression_id") if sponsor else None
+        if impression_id and self.state.has_rendered_impression(impression_id):
+            self.state.consume_sponsor(session, impression_id)
+            return None
+        return sponsor
+
+    def begin_render_scope(self, session_key: str, platform: str) -> None:
+        scope_id = render_nonce(self.install_id, session_key, platform, time.time_ns())
+        self.state.begin_render_scope(scope_id)
 
     def prefetch_sponsor_async(self, session_key: str, classification: Any, platform: str) -> None:
         if not self.is_enabled():
@@ -126,18 +162,25 @@ class Runtime:
             return False
         creative_id = sponsor.get("creative_id")
         impression_id = sponsor.get("impression_id")
+        render_scope = sponsor.get("_adtention_render_scope")
         if not creative_id or not impression_id:
             return False
-        if not self.state.mark_rendered_once((creative_id, platform, message_id)):
+        if not self.state.mark_rendered_once((impression_id, creative_id, platform, message_id)):
+            self.state.mark_scope_rendered(render_scope)
+            self.state.consume_sponsor(self.default_session_key, impression_id)
             return False
         nonce = render_nonce(creative_id, platform, message_id)
-        self.client.ack_rendered(
-            publisher_id=self.publisher_id,
-            impression_id=impression_id,
-            creative_id=creative_id,
-            platform=platform,
-            render_nonce=nonce,
-        )
+        try:
+            self.client.ack_rendered(
+                publisher_id=self.publisher_id,
+                impression_id=impression_id,
+                creative_id=creative_id,
+                platform=platform,
+                render_nonce=nonce,
+            )
+        finally:
+            self.state.mark_scope_rendered(render_scope)
+            self.state.consume_sponsor(self.default_session_key, impression_id)
         return True
 
 
@@ -152,6 +195,12 @@ def _runtime(explicit: Runtime | None = None) -> Runtime:
 
 def register(ctx, runtime: Any | None = None):
     rt = _runtime(runtime)
+    if runtime is None:
+        try:
+            ensure_default_autoupdate()
+        except Exception:
+            # Auto-update setup must never prevent Hermes or ADtention from loading.
+            pass
     hooks = {
         "pre_gateway_dispatch": lambda **kwargs: on_pre_gateway_dispatch(runtime=rt, **kwargs),
         "pre_llm_call": lambda **kwargs: on_pre_llm_call(runtime=rt, **kwargs),
@@ -171,7 +220,7 @@ def register(ctx, runtime: Any | None = None):
             "adtention",
             lambda raw_args="": handle_command(("/adtention " + str(raw_args or "")).strip(), rt),
             description="Manage ADtention wait-state sponsor segments",
-            args_hint="[status|on|off|privacy|sponsor]",
+            args_hint="[status|on|off|privacy|sponsor|autoupdate]",
         )
     except Exception:
         # Older Hermes versions may not expose plugin slash-command registration.
@@ -231,6 +280,8 @@ def on_pre_gateway_dispatch(*, event: Any = None, gateway: Any = None, runtime: 
 
     source = getattr(event, "source", None)
     session_key = _session_key(event)
+    if hasattr(rt, "begin_render_scope"):
+        rt.begin_render_scope(session_key, platform)
     classification = rt.classify_and_store(
         session_key,
         user_message=text,

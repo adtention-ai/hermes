@@ -37,3 +37,41 @@ def test_privacy_command_says_prompts_never_leave_machine():
 def test_unknown_command_returns_help():
     text = handle_command("/adtention wat", FakeRuntime())
     assert "/adtention status" in text
+
+
+class AutoUpdateRuntime(FakeRuntime):
+    def __init__(self):
+        super().__init__()
+        self.autoupdate_disabled = False
+        self.autoupdate_enabled = False
+
+    def autoupdate_status(self):
+        return {"enabled": True, "installed": True, "method": "systemd"}
+
+    def disable_autoupdate(self):
+        self.autoupdate_disabled = True
+        return {"enabled": False, "installed": False, "method": "disabled"}
+
+    def enable_autoupdate(self):
+        self.autoupdate_enabled = True
+        return {"enabled": True, "installed": True, "method": "systemd"}
+
+
+def test_autoupdate_status_command_reports_default_on():
+    text = handle_command("/adtention autoupdate status", AutoUpdateRuntime())
+    assert "auto-update is enabled" in text.lower()
+    assert "systemd" in text.lower()
+
+
+def test_autoupdate_off_command_disables_daily_updates():
+    runtime = AutoUpdateRuntime()
+    text = handle_command("/adtention autoupdate off", runtime)
+    assert runtime.autoupdate_disabled is True
+    assert "disabled" in text.lower()
+
+
+def test_autoupdate_on_command_enables_daily_updates():
+    runtime = AutoUpdateRuntime()
+    text = handle_command("/adtention autoupdate on", runtime)
+    assert runtime.autoupdate_enabled is True
+    assert "enabled" in text.lower()

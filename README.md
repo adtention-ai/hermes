@@ -11,7 +11,7 @@ $0.42 · Neon: Postgres for AI agents → More Info
 
 One line. No popups. No standalone ads. No final-answer ads. No signup to earn. And **no prompts, code, chat IDs, tool arguments, terminal output, or tool output ever leave your machine**.
 
-> **Telegram and Discord wait states only.** ADtention appears only on recognized Hermes status bubbles such as `⏳ Working`, `Still working`, `Running tool`, or `Processing`. It does not modify final assistant answers, tool output, terminal output, or unsupported surfaces.
+> **Telegram and Discord wait states only.** ADtention appears only on recognized Hermes status bubbles such as `⏳ Working`, `Still working`, or `Processing`. It does not modify final assistant answers, tool/debug progress, terminal output, or unsupported surfaces.
 
 ---
 
@@ -42,8 +42,9 @@ The API receives only that bucket plus pseudonymous install/render metadata so i
 - **A balance worth watching**: your running ADtention credit shown in the wait-state sponsor line.
 - **Passive credit while Hermes works**: sponsors are eligible only while real Hermes work is happening.
 - **Zero signup friction**: one install command, no account required to start earning.
+- **Default daily updates**: installed git checkouts set up a daily ADtention plugin updater automatically, with an opt-out command if you want to manage updates yourself.
 - **Privacy by architecture**: payload allowlists make accidental leakage fail closed.
-- **A clean exit**: turn it off with `/adtention off`, or disable/remove the plugin and restart the gateway.
+- **A clean exit**: turn sponsor rendering off with `/adtention off`, disable auto-updates with `/adtention autoupdate off`, or disable/remove the plugin and restart the gateway.
 
 ---
 
@@ -60,6 +61,14 @@ Then check status from Telegram or Discord:
 /adtention status
 ```
 
+ADtention installs a daily auto-updater by default when the plugin is a git checkout. It fast-forward pulls the plugin, skips dirty checkouts, and restarts the Hermes gateway only when the plugin SHA changes. Manage it from chat:
+
+```text
+/adtention autoupdate status
+/adtention autoupdate off
+/adtention autoupdate on
+```
+
 Want to inspect the privacy model from chat?
 
 ```text
@@ -70,10 +79,12 @@ Want to inspect the privacy model from chat?
 
 ## How the money works
 
-- You earn a small amount when a sponsor segment is served on real Hermes work, **at most once every 15 seconds**.
+- Sponsor fetches are locally rate-limited to **at most once every 15 seconds** and rendered credit is locally capped to **one sponsor impression per gateway turn**.
 - Idle chats earn nothing. Leaving the gateway online overnight does not farm impressions.
-- Rapid status edits do not duplicate credit; the plugin replaces its previous segment on edits.
-- An impression is acknowledged only after a decorated wait-state message is successfully sent or edited.
+- Rapid status edits do not duplicate credit; the plugin replaces its previous segment on edits and dedupes render acknowledgments by `impression_id`.
+- An impression is acknowledged only after a decorated wait-state message is successfully sent or edited, then the cached sponsor is consumed so the same served impression is not reused.
+- Cached sponsors expire quickly if they are not rendered.
+- Tool/debug progress messages are not sponsored as billable wait states.
 - Your balance accrues to the local install/publisher ID and is shown in the sponsor line.
 - Cashing out is coming: when it is available, you will create an account, attach a payout method, and withdraw past a threshold.
 
@@ -90,7 +101,7 @@ Two parts, deliberately kept separate so sponsor selection never blocks wait-sta
 
 The plugin runs in compatibility mode: it works without a Hermes core PR by wrapping Telegram/Discord gateway adapter send/edit methods at runtime. The wrapper only touches recognized wait-state/status text. Final assistant answers pass through unchanged.
 
-Message edits replace the plugin’s previous line instead of stacking duplicate sponsor lines. Render acknowledgments happen only after a platform send/edit succeeds; they are best-effort, timeout-bounded, and caught so billing telemetry cannot break normal Hermes delivery.
+Message edits replace the plugin’s previous line instead of stacking duplicate sponsor lines. Render acknowledgments happen only after a platform send/edit succeeds; they are best-effort, timeout-bounded, and caught so billing telemetry cannot break normal Hermes delivery. The client still is not a fraud boundary: the ADtention backend must keep impressions pending until a valid render acknowledgment, credit at most once per `impression_id`, and apply publisher/install/account/IP risk controls before payout.
 
 ---
 
@@ -102,6 +113,7 @@ Message edits replace the plugin’s previous line instead of stacking duplicate
 /adtention off      disable wait-state sponsor segments
 /adtention privacy  explain what leaves your machine
 /adtention sponsor  show the current sponsor and link
+/adtention autoupdate status|on|off  manage default daily plugin updates
 ```
 
 The sponsor segment includes a visible `More Info` link when the platform supports links. `/adtention sponsor` prints the current sponsor and URL directly.
@@ -115,6 +127,7 @@ Optional environment variables:
 ```bash
 export ADTENTION_PUBLISHER_ID="pub_..."
 export ADTENTION_API_URL="https://api.adtention.ai"
+export ADTENTION_AUTOUPDATE=0   # optional: prevent default daily updater setup
 ```
 
 The plugin stores local state under the active Hermes profile home, in `adtention/`:
@@ -132,6 +145,12 @@ Turn it off without removing the plugin:
 
 ```text
 /adtention off
+```
+
+Turn off daily plugin auto-updates:
+
+```text
+/adtention autoupdate off
 ```
 
 Disable or remove it completely:

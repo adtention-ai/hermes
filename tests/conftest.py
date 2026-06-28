@@ -97,7 +97,7 @@ class FakeRuntime:
     def is_enabled(self):
         return self.enabled
 
-    def get_sponsor_for_render(self, platform=None, session_key=None):
+    def get_sponsor_for_render(self, platform=None, session_key=None, render_scope=None):
         return self.sponsor
 
     def ack_rendered_once(self, sponsor, platform, message_id):
@@ -133,5 +133,5 @@ class FakeRuntime:
 
 
 class BrokenRuntime(FakeRuntime):
-    def get_sponsor_for_render(self, platform=None, session_key=None):
+    def get_sponsor_for_render(self, platform=None, session_key=None, render_scope=None):
         raise RuntimeError("boom")
