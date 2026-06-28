@@ -18,6 +18,7 @@ SERVICE_NAME = "adtention-autoupdate.service"
 TIMER_NAME = "adtention-autoupdate.timer"
 SCRIPT_NAME = "adtention-autoupdate.sh"
 DISABLED_SENTINEL = "autoupdate.disabled"
+METHOD_SENTINEL = "autoupdate.method"
 CRON_BEGIN = "# ADTENTION_AUTOUPDATE_BEGIN"
 CRON_END = "# ADTENTION_AUTOUPDATE_END"
 
@@ -50,8 +51,32 @@ def _disabled_path(home: Path) -> Path:
     return _state_dir(home) / DISABLED_SENTINEL
 
 
+def _method_path(home: Path) -> Path:
+    return _state_dir(home) / METHOD_SENTINEL
+
+
 def _script_path(home: Path) -> Path:
     return _state_dir(home) / SCRIPT_NAME
+
+
+def _record_install(home: Path, method: str) -> None:
+    _state_dir(home).mkdir(parents=True, exist_ok=True)
+    _method_path(home).write_text(f"{method}\n", encoding="utf-8")
+
+
+def _clear_install_record(home: Path) -> None:
+    try:
+        _method_path(home).unlink()
+    except FileNotFoundError:
+        pass
+
+
+def _recorded_method(home: Path) -> str | None:
+    try:
+        method = _method_path(home).read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        return None
+    return method if method in {"systemd", "crontab"} else None
 
 
 def _runner(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
@@ -117,7 +142,7 @@ mkdir -p "$LOG_DIR" "$STATE_DIR"
 
   remote_url="$(git remote get-url origin 2>/dev/null || true)"
   case "$remote_url" in
-    git@github.com:adtention-ai/hermes.git|https://github.com/adtention-ai/hermes.git|https://github.com/adtention-ai/hermes|*github.com/adtention-ai/hermes.git)
+    git@github.com:adtention-ai/hermes.git|ssh://git@github.com/adtention-ai/hermes.git|https://github.com/adtention-ai/hermes.git|https://github.com/adtention-ai/hermes)
       ;;
     *)
       echo "Unexpected ADtention plugin remote '$remote_url'; skipping."
@@ -125,17 +150,18 @@ mkdir -p "$LOG_DIR" "$STATE_DIR"
       ;;
   esac
 
-  if ! git diff --quiet || ! git diff --cached --quiet; then
+  if [ -n "$(git status --porcelain --untracked-files=normal)" ]; then
     echo "Plugin checkout has local changes; skipping auto-update."
     exit 0
   fi
 
   old_sha="$(git rev-parse HEAD)"
-  if command -v hermes >/dev/null 2>&1; then
-    hermes plugins update adtention
-  else
-    git pull --ff-only
+  current_branch="$(git branch --show-current 2>/dev/null || true)"
+  if [ -z "$current_branch" ]; then
+    echo "Plugin checkout is detached from a branch; skipping auto-update."
+    exit 0
   fi
+  git pull --ff-only origin "$current_branch"
   new_sha="$(git rev-parse HEAD)"
 
   if [ "$old_sha" != "$new_sha" ]; then
@@ -158,15 +184,26 @@ def write_updater_script(*, plugin_dir: Path, hermes_home: Path) -> Path:
     return script
 
 
-def _systemd_service(script: Path, home: Path) -> str:
+def _systemd_quote(value: object) -> str:
+    text = str(value)
+    return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _path_env() -> str:
+    return os.environ.get("PATH") or "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+
+def _systemd_service(script: Path, home: Path, plugin_path: Path) -> str:
     return f"""[Unit]
 Description=ADtention Hermes plugin auto-update
 Documentation=https://github.com/adtention-ai/hermes
 
 [Service]
 Type=oneshot
-Environment=HERMES_HOME={home}
-ExecStart={script}
+Environment={_systemd_quote(f"HERMES_HOME={home}")}
+Environment={_systemd_quote(f"ADTENTION_PLUGIN_DIR={plugin_path}")}
+Environment={_systemd_quote(f"PATH={_path_env()}")}
+ExecStart={_systemd_quote(script)}
 """
 
 
@@ -189,6 +226,7 @@ def _install_systemd_timer(
     *,
     script: Path,
     home: Path,
+    plugin_path: Path,
     systemd_user_dir: Path,
     runner: Runner,
     which: Which,
@@ -197,7 +235,7 @@ def _install_systemd_timer(
     if not systemctl:
         return _completed(False, reason="systemctl_missing")
     systemd_user_dir.mkdir(parents=True, exist_ok=True)
-    (systemd_user_dir / SERVICE_NAME).write_text(_systemd_service(script, home), encoding="utf-8")
+    (systemd_user_dir / SERVICE_NAME).write_text(_systemd_service(script, home, plugin_path), encoding="utf-8")
     (systemd_user_dir / TIMER_NAME).write_text(_systemd_timer(), encoding="utf-8")
     for cmd in (
         [systemctl, "--user", "daemon-reload"],
@@ -225,14 +263,20 @@ def _strip_cron_block(text: str) -> str:
     return "\n".join(output).strip()
 
 
-def _install_crontab(*, script: Path, home: Path, runner: Runner, which: Which) -> dict[str, Any]:
+def _install_crontab(*, script: Path, home: Path, plugin_path: Path, runner: Runner, which: Which) -> dict[str, Any]:
     crontab = which("crontab")
     if not crontab:
         return _completed(False, reason="crontab_missing")
     existing_result = runner([crontab, "-l"], capture_output=True, text=True, timeout=15)
     existing = existing_result.stdout if existing_result.returncode == 0 else ""
     preserved = _strip_cron_block(existing)
-    line = f"17 4 * * * HERMES_HOME={shlex.quote(str(home))} {shlex.quote(str(script))}"
+    line = (
+        "17 4 * * * "
+        f"HERMES_HOME={shlex.quote(str(home))} "
+        f"ADTENTION_PLUGIN_DIR={shlex.quote(str(plugin_path))} "
+        f"PATH={shlex.quote(_path_env())} "
+        f"{shlex.quote(str(script))}"
+    )
     block = f"{CRON_BEGIN}\n{line}\n{CRON_END}"
     new_cron = f"{preserved}\n{block}\n" if preserved else f"{block}\n"
     result = runner([crontab, "-"], input=new_cron, capture_output=True, text=True, timeout=15)
@@ -259,18 +303,22 @@ def ensure_default_autoupdate(
         return {"enabled": True, "installed": False, "reason": "not_git_checkout", "method": "none"}
 
     script = write_updater_script(plugin_dir=plug, hermes_home=home)
+    _clear_install_record(home)
     systemd_result = _install_systemd_timer(
         script=script,
         home=home,
+        plugin_path=plug,
         systemd_user_dir=Path(systemd_user_dir) if systemd_user_dir is not None else default_systemd_user_dir(),
         runner=runner,
         which=which,
     )
     if systemd_result.get("ok"):
+        _record_install(home, "systemd")
         return {"enabled": True, "installed": True, "method": "systemd", "script": str(script)}
 
-    cron_result = _install_crontab(script=script, home=home, runner=runner, which=which)
+    cron_result = _install_crontab(script=script, home=home, plugin_path=plug, runner=runner, which=which)
     if cron_result.get("ok"):
+        _record_install(home, "crontab")
         return {"enabled": True, "installed": True, "method": "crontab", "script": str(script)}
 
     return {
@@ -285,16 +333,53 @@ def autoupdate_status(
     *,
     hermes_home: Path | None = None,
     systemd_user_dir: Path | None = None,
+    runner: Runner = _runner,
+    which: Which = _which,
 ) -> dict[str, Any]:
     home = Path(hermes_home) if hermes_home is not None else globals()["hermes_home"]()
     allowed, reason = _auto_update_allowed(home)
     if not allowed:
         return {"enabled": False, "installed": False, "reason": reason, "method": "disabled"}
-    timer = (Path(systemd_user_dir) if systemd_user_dir is not None else default_systemd_user_dir()) / TIMER_NAME
+
     script = _script_path(home)
-    if timer.exists():
+    method = _recorded_method(home)
+    user_dir = Path(systemd_user_dir) if systemd_user_dir is not None else default_systemd_user_dir()
+
+    if method == "systemd":
+        service = user_dir / SERVICE_NAME
+        timer = user_dir / TIMER_NAME
+        if not (script.exists() and service.exists() and timer.exists()):
+            return {"enabled": True, "installed": False, "method": "none", "script": str(script)}
+        systemctl = which("systemctl")
+        if systemctl:
+            result = runner([systemctl, "--user", "is-enabled", TIMER_NAME], capture_output=True, text=True, timeout=15)
+            if result.returncode != 0:
+                return {
+                    "enabled": True,
+                    "installed": False,
+                    "method": "none",
+                    "reason": "systemd_not_enabled",
+                    "script": str(script),
+                }
         return {"enabled": True, "installed": True, "method": "systemd", "script": str(script)}
-    return {"enabled": True, "installed": script.exists(), "method": "script" if script.exists() else "none", "script": str(script)}
+
+    if method == "crontab":
+        if not script.exists():
+            return {"enabled": True, "installed": False, "method": "none", "script": str(script)}
+        crontab = which("crontab")
+        if crontab:
+            result = runner([crontab, "-l"], capture_output=True, text=True, timeout=15)
+            if result.returncode != 0 or CRON_BEGIN not in result.stdout or CRON_END not in result.stdout:
+                return {
+                    "enabled": True,
+                    "installed": False,
+                    "method": "none",
+                    "reason": "crontab_block_missing",
+                    "script": str(script),
+                }
+        return {"enabled": True, "installed": True, "method": "crontab", "script": str(script)}
+
+    return {"enabled": True, "installed": False, "method": "none", "script": str(script)}
 
 
 def enable_autoupdate(
@@ -328,6 +413,7 @@ def disable_autoupdate(
     home = Path(hermes_home) if hermes_home is not None else globals()["hermes_home"]()
     _state_dir(home).mkdir(parents=True, exist_ok=True)
     _disabled_path(home).write_text("disabled\n", encoding="utf-8")
+    _clear_install_record(home)
 
     systemctl = which("systemctl")
     user_dir = Path(systemd_user_dir) if systemd_user_dir is not None else default_systemd_user_dir()

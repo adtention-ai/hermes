@@ -15,6 +15,7 @@ This release makes ADtention harder to farm from local Hermes loops while keepin
 - Requires an explicit gateway status path or status metadata before decorating `send`/`edit_message`, preventing prefix-spoofed final messages from being sponsored.
 - Stops treating tool/debug progress messages as billable wait-state sponsor surfaces.
 - Installs a default daily plugin auto-updater for git checkouts, with `/adtention autoupdate off` to disable it.
+- Hardens the default auto-updater with a strict GitHub remote allowlist, direct `git pull --ff-only`, untracked dirty-checkout detection, and install-state tracking so failed systemd setup does not report as installed.
 
 ### Install / update
 

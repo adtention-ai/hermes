@@ -61,7 +61,7 @@ Then check status from Telegram or Discord:
 /adtention status
 ```
 
-ADtention installs a daily auto-updater by default when the plugin is a git checkout. It fast-forward pulls the plugin, skips dirty checkouts, and restarts the Hermes gateway only when the plugin SHA changes. Manage it from chat:
+ADtention installs a daily auto-updater by default when the plugin is a git checkout. It uses a direct `git pull --ff-only` from the expected ADtention GitHub remote, skips dirty checkouts including untracked files, and restarts the Hermes gateway only when the plugin SHA changes. Manage it from chat:
 
 ```text
 /adtention autoupdate status
