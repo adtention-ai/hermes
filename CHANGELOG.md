@@ -1,8 +1,10 @@
 # Changelog
 
-## [Unreleased]
+## [0.1.3] - 2026-06-28
 
-**Client-side anti-farming hardening.**
+**Client-side anti-farming hardening and default auto-updates.**
+
+This release makes ADtention harder to farm from local Hermes loops while keeping the visible surface limited to recognized Telegram/Discord wait states.
 
 ### What changed
 
@@ -13,6 +15,27 @@
 - Requires an explicit gateway status path or status metadata before decorating `send`/`edit_message`, preventing prefix-spoofed final messages from being sponsored.
 - Stops treating tool/debug progress messages as billable wait-state sponsor surfaces.
 - Installs a default daily plugin auto-updater for git checkouts, with `/adtention autoupdate off` to disable it.
+
+### Install / update
+
+```bash
+hermes plugins install adtention-ai/hermes --enable
+hermes gateway restart
+```
+
+ADtention for Hermes still targets recognized Telegram/Discord wait states only.
+
+### Privacy
+
+No privacy model changes. The plugin still never sends prompts, replies, code, chat IDs, tool arguments, terminal output, or tool output.
+
+### Release verification
+
+- Full test suite passes.
+- `python -m compileall adtention_hermes` passes.
+- `ruff check .` passes.
+- `python -m build` produces wheel and sdist artifacts.
+- `git diff --check` passes.
 
 ## [0.1.2] - 2026-06-26
 
