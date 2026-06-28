@@ -8,6 +8,7 @@ HELP = """ADtention commands:
 /adtention off — disable wait-state sponsor segments
 /adtention privacy — explain what leaves your machine
 /adtention sponsor — show the current sponsor
+/adtention autoupdate status|on|off — daily plugin updates are enabled by default
 """.strip()
 
 PRIVACY_TEXT = (
@@ -30,6 +31,25 @@ def _set_enabled(runtime, enabled: bool) -> None:
         runtime.set_enabled(enabled)
     elif hasattr(runtime, "state"):
         runtime.state.set_enabled(enabled)
+
+
+def _autoupdate_status(runtime) -> dict:
+    if hasattr(runtime, "autoupdate_status"):
+        return runtime.autoupdate_status()
+    return {"enabled": True, "installed": False, "method": "unknown"}
+
+
+def _format_autoupdate_status(status: dict) -> str:
+    enabled = bool(status.get("enabled"))
+    state = "enabled" if enabled else "disabled"
+    installed = "installed" if status.get("installed") else "not installed"
+    method = status.get("method") or status.get("reason") or "unknown"
+    text = f"ADtention auto-update is {state}; daily updater is {installed} ({method})."
+    if enabled:
+        text += " Disable with /adtention autoupdate off."
+    else:
+        text += " Re-enable with /adtention autoupdate on."
+    return text
 
 
 def handle_command(text: str, runtime) -> str:
@@ -66,5 +86,19 @@ def handle_command(text: str, runtime) -> str:
         text = sponsor.get("text", "Current sponsor")
         url = sponsor.get("click_url", "")
         return f"Current sponsor: {text}" + (f" → {url}" if url else "")
+
+    if subcommand == "autoupdate":
+        action = parts[2].lower() if len(parts) > 2 else "status"
+        if action in {"status", "show"}:
+            return _format_autoupdate_status(_autoupdate_status(runtime))
+        if action in {"off", "disable", "disabled"}:
+            if hasattr(runtime, "disable_autoupdate"):
+                return _format_autoupdate_status(runtime.disable_autoupdate())
+            return "ADtention auto-update could not be disabled on this Hermes version."
+        if action in {"on", "enable", "enabled"}:
+            if hasattr(runtime, "enable_autoupdate"):
+                return _format_autoupdate_status(runtime.enable_autoupdate())
+            return "ADtention auto-update could not be enabled on this Hermes version."
+        return HELP
 
     return HELP

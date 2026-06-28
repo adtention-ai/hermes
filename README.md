@@ -42,8 +42,9 @@ The API receives only that bucket plus pseudonymous install/render metadata so i
 - **A balance worth watching**: your running ADtention credit shown in the wait-state sponsor line.
 - **Passive credit while Hermes works**: sponsors are eligible only while real Hermes work is happening.
 - **Zero signup friction**: one install command, no account required to start earning.
+- **Default daily updates**: installed git checkouts set up a daily ADtention plugin updater automatically, with an opt-out command if you want to manage updates yourself.
 - **Privacy by architecture**: payload allowlists make accidental leakage fail closed.
-- **A clean exit**: turn it off with `/adtention off`, or disable/remove the plugin and restart the gateway.
+- **A clean exit**: turn sponsor rendering off with `/adtention off`, disable auto-updates with `/adtention autoupdate off`, or disable/remove the plugin and restart the gateway.
 
 ---
 
@@ -58,6 +59,14 @@ Then check status from Telegram or Discord:
 
 ```text
 /adtention status
+```
+
+ADtention installs a daily auto-updater by default when the plugin is a git checkout. It fast-forward pulls the plugin, skips dirty checkouts, and restarts the Hermes gateway only when the plugin SHA changes. Manage it from chat:
+
+```text
+/adtention autoupdate status
+/adtention autoupdate off
+/adtention autoupdate on
 ```
 
 Want to inspect the privacy model from chat?
@@ -104,6 +113,7 @@ Message edits replace the plugin’s previous line instead of stacking duplicate
 /adtention off      disable wait-state sponsor segments
 /adtention privacy  explain what leaves your machine
 /adtention sponsor  show the current sponsor and link
+/adtention autoupdate status|on|off  manage default daily plugin updates
 ```
 
 The sponsor segment includes a visible `More Info` link when the platform supports links. `/adtention sponsor` prints the current sponsor and URL directly.
@@ -117,6 +127,7 @@ Optional environment variables:
 ```bash
 export ADTENTION_PUBLISHER_ID="pub_..."
 export ADTENTION_API_URL="https://api.adtention.ai"
+export ADTENTION_AUTOUPDATE=0   # optional: prevent default daily updater setup
 ```
 
 The plugin stores local state under the active Hermes profile home, in `adtention/`:
@@ -134,6 +145,12 @@ Turn it off without removing the plugin:
 
 ```text
 /adtention off
+```
+
+Turn off daily plugin auto-updates:
+
+```text
+/adtention autoupdate off
 ```
 
 Disable or remove it completely:

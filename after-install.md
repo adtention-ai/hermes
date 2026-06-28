@@ -21,6 +21,12 @@ Turn it off anytime:
 /adtention off
 ```
 
+ADtention also installs a daily plugin auto-updater by default for git checkouts. Disable it anytime:
+
+```text
+/adtention autoupdate off
+```
+
 Remove it completely with:
 
 ```bash

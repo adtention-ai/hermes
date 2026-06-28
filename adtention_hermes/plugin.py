@@ -13,6 +13,8 @@ from typing import Any
 from .classifier import classify_turn
 from .client import Client
 from .commands import handle_command
+from . import autoupdate as autoupdate_module
+from .autoupdate import ensure_default_autoupdate
 from .gateway_patch import _platform_name, wrap_gateway
 from .privacy import render_nonce
 from .state import StateStore
@@ -56,6 +58,15 @@ class Runtime:
 
     def set_enabled(self, enabled: bool) -> None:
         self.state.set_enabled(enabled)
+
+    def autoupdate_status(self) -> dict[str, Any]:
+        return autoupdate_module.autoupdate_status()
+
+    def enable_autoupdate(self) -> dict[str, Any]:
+        return autoupdate_module.enable_autoupdate()
+
+    def disable_autoupdate(self) -> dict[str, Any]:
+        return autoupdate_module.disable_autoupdate()
 
     def command_status(self) -> dict[str, Any]:
         classification = self.state.get_classification(self.default_session_key) or {}
@@ -184,6 +195,12 @@ def _runtime(explicit: Runtime | None = None) -> Runtime:
 
 def register(ctx, runtime: Any | None = None):
     rt = _runtime(runtime)
+    if runtime is None:
+        try:
+            ensure_default_autoupdate()
+        except Exception:
+            # Auto-update setup must never prevent Hermes or ADtention from loading.
+            pass
     hooks = {
         "pre_gateway_dispatch": lambda **kwargs: on_pre_gateway_dispatch(runtime=rt, **kwargs),
         "pre_llm_call": lambda **kwargs: on_pre_llm_call(runtime=rt, **kwargs),
@@ -203,7 +220,7 @@ def register(ctx, runtime: Any | None = None):
             "adtention",
             lambda raw_args="": handle_command(("/adtention " + str(raw_args or "")).strip(), rt),
             description="Manage ADtention wait-state sponsor segments",
-            args_hint="[status|on|off|privacy|sponsor]",
+            args_hint="[status|on|off|privacy|sponsor|autoupdate]",
         )
     except Exception:
         # Older Hermes versions may not expose plugin slash-command registration.

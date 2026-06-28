@@ -1,3 +1,4 @@
+import adtention_hermes.plugin as plugin_module
 from adtention_hermes.plugin import (
     on_post_llm_call,
     on_pre_gateway_dispatch,
@@ -48,6 +49,17 @@ def test_registers_adtention_slash_command_when_supported():
     result = ctx.commands["adtention"]["handler"]("off")
     assert "disabled" in result.lower()
     assert runtime.enabled is False
+
+
+def test_register_ensures_autoupdate_by_default(monkeypatch):
+    ctx = FakeHookContext()
+    calls = []
+    monkeypatch.setattr(plugin_module, "_runtime", lambda explicit=None: FakeRuntime())
+    monkeypatch.setattr(plugin_module, "ensure_default_autoupdate", lambda: calls.append(True))
+
+    plugin_module.register(ctx)
+
+    assert calls == [True]
 
 
 def test_pre_gateway_dispatch_wraps_gateway_and_prefetches():

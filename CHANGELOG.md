@@ -12,7 +12,7 @@
 - Caps sponsored renders to one impression per gateway turn.
 - Requires an explicit gateway status path or status metadata before decorating `send`/`edit_message`, preventing prefix-spoofed final messages from being sponsored.
 - Stops treating tool/debug progress messages as billable wait-state sponsor surfaces.
-- Documents why Telegram/Discord delivery success is not proof the user saw the message, and how clicks/subsequent activity can be used only as weak fraud/risk signals.
+- Installs a default daily plugin auto-updater for git checkouts, with `/adtention autoupdate off` to disable it.
 
 ## [0.1.2] - 2026-06-26
 
