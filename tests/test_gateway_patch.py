@@ -1,5 +1,7 @@
 import asyncio
 import importlib
+import sys
+import types
 
 from adtention_hermes.gateway_patch import patch_gateway_status_helper, wrap_adapter, wrap_gateway
 from adtention_hermes.renderer import SPONSOR_MARKER
@@ -78,8 +80,15 @@ async def _fake_gateway_status_helper_original(adapter, chat_id, status_key, con
 
 
 def test_patch_gateway_status_helper_injects_render_scope_metadata(monkeypatch):
+    gateway_pkg = types.ModuleType("gateway")
+    gateway_pkg.__path__ = []
+    gateway_run_module = types.ModuleType("gateway.run")
+    gateway_pkg.run = gateway_run_module
+    monkeypatch.setitem(sys.modules, "gateway", gateway_pkg)
+    monkeypatch.setitem(sys.modules, "gateway.run", gateway_run_module)
+
     gateway_run = importlib.import_module("gateway.run")
-    monkeypatch.setattr(gateway_run, "_send_or_update_status_coro", _fake_gateway_status_helper_original)
+    monkeypatch.setattr(gateway_run, "_send_or_update_status_coro", _fake_gateway_status_helper_original, raising=False)
     runtime = FakeRuntime()
 
     patch_gateway_status_helper(runtime)
