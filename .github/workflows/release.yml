@@ -2,6 +2,8 @@ name: release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*.*.*"
   workflow_dispatch:
@@ -18,27 +20,15 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - name: Resolve release tag
-        id: vars
-        shell: bash
-        env:
-          DISPATCH_TAG: ${{ inputs.tag }}
-        run: |
-          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
-            tag="$DISPATCH_TAG"
-          else
-            tag="$GITHUB_REF_NAME"
-          fi
-          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Release tag must look like v0.1.0; got: $tag" >&2
-            exit 1
-          fi
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
 
       - uses: actions/checkout@v4
+        if: github.event_name != 'workflow_dispatch'
         with:
-          ref: ${{ steps.vars.outputs.tag }}
           fetch-depth: 0
 
       - uses: actions/setup-python@v5
@@ -47,6 +37,41 @@ jobs:
 
       - name: Install release tooling
         run: python -m pip install --upgrade pip build pytest ruff
+
+      - name: Resolve release tag
+        id: vars
+        shell: bash
+        env:
+          DISPATCH_TAG: ${{ inputs.tag }}
+        run: |
+          source="tag"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            tag="$DISPATCH_TAG"
+            source="dispatch"
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            tag="$GITHUB_REF_NAME"
+          elif [[ "$GITHUB_REF" == refs/heads/main ]]; then
+            version="$(python - <<'PY'
+          import tomllib
+          from pathlib import Path
+
+          project = tomllib.loads(Path("pyproject.toml").read_text())
+          print(project["project"]["version"])
+          PY
+          )"
+            tag="v$version"
+            source="main"
+          else
+            echo "Release workflow only supports tags, workflow_dispatch, and pushes to main." >&2
+            exit 1
+          fi
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tag must look like v0.1.0; got: $tag" >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          echo "source=$source" >> "$GITHUB_OUTPUT"
 
       - name: Verify release metadata matches tag
         env:
@@ -92,6 +117,21 @@ jobs:
           name: adtention-hermes-${{ steps.vars.outputs.tag }}-dist
           path: dist/*
           if-no-files-found: error
+
+      - name: Create release tag for main merge
+        if: steps.vars.outputs.source == 'main'
+        env:
+          RELEASE_TAG: ${{ steps.vars.outputs.tag }}
+        run: |
+          git fetch --tags --force
+          if git rev-parse -q --verify "refs/tags/$RELEASE_TAG" >/dev/null; then
+            echo "Tag $RELEASE_TAG already exists. Bump pyproject.toml, plugin.yaml, adtention_hermes/client.py, and CHANGELOG.md before merging to main." >&2
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$RELEASE_TAG" -m "Release $RELEASE_TAG"
+          git push origin "$RELEASE_TAG"
 
       - name: Create or update GitHub release
         env:

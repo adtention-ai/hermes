@@ -46,7 +46,7 @@ class Client:
         api_url: str = "https://api.adtention.ai",
         post_json: PostJSON | None = None,
         timeout: float = 5.0,
-        client_version: str = "0.1.2",
+        client_version: str = "0.1.3",
     ):
         self.api_url = api_url.rstrip("/")
         self.post_json = post_json or self._urllib_post_json
