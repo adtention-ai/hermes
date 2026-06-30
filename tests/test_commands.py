@@ -39,6 +39,24 @@ def test_unknown_command_returns_help():
     assert "/adtention status" in text
 
 
+def test_referral_command_reports_referral_link():
+    text = handle_command("/adtention referral", FakeRuntime())
+
+    assert "https://adtention.ai/r/h3r7vmj" in text
+    assert "h3r7vmj" in text
+    assert "15%" in text
+    assert "hermes plugins install adtention-ai/hermes --enable --referral h3r7vmj" in text
+
+
+def test_referral_command_reports_unavailable_state():
+    runtime = FakeRuntime()
+    runtime.referral = {}
+
+    text = handle_command("/adtention referral", runtime)
+
+    assert "not available yet" in text.lower()
+
+
 class AutoUpdateRuntime(FakeRuntime):
     def __init__(self):
         super().__init__()

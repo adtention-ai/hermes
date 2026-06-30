@@ -29,6 +29,7 @@ The API receives only that bucket plus pseudonymous install/render metadata so i
 | Random install/publisher ID | Code, files, filenames, paths, or repo names |
 | Host/surface/platform labels such as `hermes_wait_state` and `telegram` | Chat IDs or user IDs |
 | Render nonce, client tag, and client version | Tool arguments, terminal output, or tool output |
+| Optional referral code if configured or requested | Copied referral-link query strings; they are normalized locally |
 | Impression/creative IDs when a wait-state render is acknowledged | Account, email, or payout details just to install or earn |
 
 **No account, email, or login is required to install or earn.** The install ID is a random local pseudonym. Cashing out, once available, will require an account with a payout method — but earning does not.
@@ -42,6 +43,7 @@ The API receives only that bucket plus pseudonymous install/render metadata so i
 - **A balance worth watching**: your running ADtention credit shown in the wait-state sponsor line.
 - **Passive credit while Hermes works**: sponsors are eligible only while real Hermes work is happening.
 - **Zero signup friction**: one install command, no account required to start earning.
+- **Referral earning path**: `/adtention referral` shows your invite link, and referred installs can pass your code without exposing copied URL query strings.
 - **Default daily updates**: installed git checkouts set up a daily ADtention plugin updater automatically, with an opt-out command if you want to manage updates yourself.
 - **Privacy by architecture**: payload allowlists make accidental leakage fail closed.
 - **A clean exit**: turn sponsor rendering off with `/adtention off`, disable auto-updates with `/adtention autoupdate off`, or disable/remove the plugin and restart the gateway.
@@ -55,11 +57,28 @@ hermes plugins install adtention-ai/hermes --enable
 hermes gateway restart
 ```
 
+Referred install:
+
+```bash
+hermes plugins install adtention-ai/hermes --enable --referral h3r7vmj
+hermes gateway restart
+```
+
 Then check status from Telegram or Discord:
 
 ```text
 /adtention status
+/adtention referral
 ```
+
+Share your referral link with other Hermes users. If you are installing from someone else’s link/code, pass it on the install command before the first gateway restart so the registration is attributed:
+
+```bash
+hermes plugins install adtention-ai/hermes --enable --referral h3r7vmj
+hermes gateway restart
+```
+
+The plugin normalizes copied links locally and sends only the 7-character referral code as `ref` during registration.
 
 ADtention installs a daily auto-updater by default when the plugin is a git checkout. It fast-forward pulls the plugin, skips dirty checkouts, and restarts the Hermes gateway only when the plugin SHA changes. Manage it from chat:
 
@@ -86,6 +105,7 @@ Want to inspect the privacy model from chat?
 - Cached sponsors expire quickly if they are not rendered.
 - Tool/debug progress messages are not sponsored as billable wait states.
 - Your balance accrues to the local install/publisher ID and is shown in the sponsor line.
+- Referrers earn **15%** of referred publishers’ ADtention impression earnings; `/adtention referral` shows the local install’s share link once registered.
 - Cashing out is coming: when it is available, you will create an account, attach a payout method, and withdraw past a threshold.
 
 It is not a salary. It is beer money that shows up for work you were already doing.
@@ -109,6 +129,7 @@ Message edits replace the plugin’s previous line instead of stacking duplicate
 
 ```text
 /adtention status   show enabled state, balance, category, and current sponsor
+/adtention referral show your referral code/link for inviting other Hermes users
 /adtention on       enable wait-state sponsor segments
 /adtention off      disable wait-state sponsor segments
 /adtention privacy  explain what leaves your machine
@@ -116,7 +137,7 @@ Message edits replace the plugin’s previous line instead of stacking duplicate
 /adtention autoupdate status|on|off  manage default daily plugin updates
 ```
 
-The sponsor segment includes a visible `More Info` link when the platform supports links. `/adtention sponsor` prints the current sponsor and URL directly.
+The sponsor segment includes a visible `More Info` link when the platform supports links. `/adtention sponsor` prints the current sponsor and URL directly. `/adtention referral` prints the share link and code for the local publisher identity.
 
 ---
 
@@ -127,6 +148,8 @@ Optional environment variables:
 ```bash
 export ADTENTION_PUBLISHER_ID="pub_..."
 export ADTENTION_API_URL="https://api.adtention.ai"
+export ADTENTION_REFERRER="h3r7vmj"       # manual equivalent of install --referral
+export ADTENTION_REFERRAL_URL="https://adtention.ai/r/h3r7vmj"  # equivalent; normalized locally
 export ADTENTION_AUTOUPDATE=0   # optional: prevent default daily updater setup
 ```
 
@@ -184,6 +207,9 @@ Hermes keeps working. The sponsor may not refresh, and wait-state messages may r
 
 **Do I need an account?**
 Not to install or earn. Cashout, once available, will require an account with a payout method.
+
+**Can I refer other Hermes users?**
+Yes. Run `/adtention referral` to get your link/code. A referred install can set `ADTENTION_REFERRER` or `ADTENTION_REFERRAL_URL` before first registration; the plugin sends only the normalized code as `ref`.
 
 **How do I know the plugin is active?**
 Run `/adtention status` from Telegram or Discord.

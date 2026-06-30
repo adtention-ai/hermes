@@ -9,6 +9,8 @@ import uuid
 from pathlib import Path
 from typing import Any, Iterable
 
+from .referral import normalize_referrer, referral_url_for
+
 
 class StateStore:
     def __init__(self, base_dir: str | Path):
@@ -99,6 +101,33 @@ class StateStore:
 
     def set_publisher_id(self, publisher_id: str) -> None:
         self.set_setting("publisher_id", publisher_id)
+
+    def get_referral_code(self) -> str | None:
+        return self.get_setting("referral_code")
+
+    def get_referral_url(self) -> str | None:
+        stored = self.get_setting("referral_url")
+        if stored:
+            return stored
+        return referral_url_for(self.get_referral_code())
+
+    def set_referral(self, *, referral_code: object | None = None, referral_url: object | None = None) -> None:
+        code = normalize_referrer(referral_code) or normalize_referrer(referral_url)
+        url = str(referral_url).strip() if referral_url else referral_url_for(code)
+        if code:
+            self.set_setting("referral_code", code)
+        if url:
+            self.set_setting("referral_url", url)
+
+    def get_referral(self) -> dict[str, str]:
+        referral_code = self.get_referral_code()
+        referral_url = self.get_referral_url()
+        out: dict[str, str] = {}
+        if referral_code:
+            out["referral_code"] = referral_code
+        if referral_url:
+            out["referral_url"] = referral_url
+        return out
 
     def save_sponsor(self, session_key: str, sponsor: dict[str, Any], *, now: int | None = None) -> None:
         updated_at = int(time.time()) if now is None else int(now)

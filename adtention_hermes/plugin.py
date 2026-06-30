@@ -17,6 +17,7 @@ from . import autoupdate as autoupdate_module
 from .autoupdate import ensure_default_autoupdate
 from .gateway_patch import _platform_name, wrap_gateway
 from .privacy import render_nonce
+from .referral import normalize_referrer, referral_url_for
 from .state import StateStore
 
 _RUNTIME = None
@@ -30,6 +31,14 @@ def _hermes_home() -> Path:
         return Path(get_hermes_home())
     except Exception:
         return Path(os.environ.get("HERMES_HOME", Path.home() / ".hermes"))
+
+
+def _registration_referrer_from_env() -> str | None:
+    for name in ("ADTENTION_REFERRER", "ADTENTION_REFERRAL_CODE", "ADTENTION_REFERRAL_URL"):
+        normalized = normalize_referrer(os.environ.get(name))
+        if normalized:
+            return normalized
+    return None
 
 
 class Runtime:
@@ -79,7 +88,44 @@ class Runtime:
             "balance_usd": sponsor.get("balance_usd") if sponsor else None,
             "category_v2": classification.get("category_v2", "general"),
             "sponsor": sponsor,
+            "referral": self.state.get_referral(),
         }
+
+    def _remember_registration(self, registration: dict[str, Any]) -> str | None:
+        publisher_id = registration.get("publisher_id")
+        if publisher_id:
+            self.publisher_id = str(publisher_id)
+            self.state.set_publisher_id(self.publisher_id)
+        referral_code = registration.get("referral_code")
+        referral_url = registration.get("referral_url") or referral_url_for(referral_code)
+        if referral_code or referral_url:
+            self.state.set_referral(referral_code=referral_code, referral_url=referral_url)
+        return self.publisher_id
+
+    def _register_install(self) -> str | None:
+        kwargs = {"install_id": self.install_id}
+        referrer = _registration_referrer_from_env()
+        if referrer:
+            kwargs["referrer"] = referrer
+        return self._remember_registration(self.client.register_install(**kwargs))
+
+    def referral_status(self) -> dict[str, str]:
+        referral = self.state.get_referral()
+        if referral:
+            return referral
+        try:
+            if not self.publisher_id:
+                self._register_install()
+            elif hasattr(self.client, "balance"):
+                balance = self.client.balance(publisher_id=self.publisher_id)
+                if isinstance(balance, dict):
+                    self.state.set_referral(
+                        referral_code=balance.get("referral_code"),
+                        referral_url=balance.get("referral_url") or referral_url_for(balance.get("referral_code")),
+                    )
+        except Exception:
+            return self.state.get_referral()
+        return self.state.get_referral()
 
     def classify_and_store(self, session_key: str, **kwargs) -> Any:
         observed_tools = kwargs.pop("observed_tools", None) or self.state.get_observed_tools(session_key)
@@ -130,12 +176,9 @@ class Runtime:
             try:
                 publisher_id = self.publisher_id
                 if not publisher_id:
-                    reg = self.client.register_install(install_id=self.install_id)
-                    publisher_id = reg.get("publisher_id")
+                    publisher_id = self._register_install()
                     if not publisher_id:
                         return
-                    self.publisher_id = publisher_id
-                    self.state.set_publisher_id(publisher_id)
 
                 sponsor = self.client.serve(
                     publisher_id=publisher_id,
@@ -220,7 +263,7 @@ def register(ctx, runtime: Any | None = None):
             "adtention",
             lambda raw_args="": handle_command(("/adtention " + str(raw_args or "")).strip(), rt),
             description="Manage ADtention wait-state sponsor segments",
-            args_hint="[status|on|off|privacy|sponsor|autoupdate]",
+            args_hint="[status|referral|on|off|privacy|sponsor|autoupdate]",
         )
     except Exception:
         # Older Hermes versions may not expose plugin slash-command registration.

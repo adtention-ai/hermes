@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Adds `/adtention referral` so Hermes users can see their local referral code/link.
+- Stores `referral_code` / `referral_url` returned by `POST /v1/register`; derives the standard `https://adtention.ai/r/<code>` link when the API returns only a code.
+- Supports referred installs through Hermes plugin install `--referral` / `--ref`, which Hermes persists to `ADTENTION_REFERRER`; the plugin normalizes it locally and sends the API only the 7-character `ref` code.
+
+### Privacy
+
+- Copied referral links and query strings are never sent verbatim; only the normalized referral code is included in the registration payload.
+
 ## [0.1.3] - 2026-06-28
 
 **Client-side anti-farming hardening and default auto-updates.**

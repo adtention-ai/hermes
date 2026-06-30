@@ -93,6 +93,10 @@ class FakeRuntime:
         self.classifications = {}
         self.prefetch_calls = []
         self.sent_commands = []
+        self.referral = {
+            "referral_code": "h3r7vmj",
+            "referral_url": "https://adtention.ai/r/h3r7vmj",
+        }
 
     def is_enabled(self):
         return self.enabled
@@ -127,6 +131,9 @@ class FakeRuntime:
 
     def command_status(self):
         return {"enabled": self.enabled, "balance_usd": 0.42, "category_v2": "web_research", "sponsor": self.sponsor}
+
+    def referral_status(self):
+        return self.referral
 
     def set_enabled(self, value):
         self.enabled = bool(value)
