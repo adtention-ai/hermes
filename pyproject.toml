@@ -1,6 +1,6 @@
 [project]
 name = "adtention-hermes"
-version = "0.1.3"
+version = "0.1.4"
 description = "ADtention for Hermes — one quiet sponsor line in Telegram/Discord wait states that pays you while your agent works."
 readme = "README.md"
 requires-python = ">=3.11"
