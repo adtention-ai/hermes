@@ -23,6 +23,19 @@ def test_opt_out_disables_rendering(tmp_path):
     assert store.is_enabled() is True
 
 
+def test_saves_and_reads_referral_identity(tmp_path):
+    store = StateStore(tmp_path)
+
+    store.set_referral(referral_code="h3r7vmj", referral_url="https://adtention.ai/r/h3r7vmj")
+
+    assert store.get_referral_code() == "h3r7vmj"
+    assert store.get_referral_url() == "https://adtention.ai/r/h3r7vmj"
+    assert store.get_referral() == {
+        "referral_code": "h3r7vmj",
+        "referral_url": "https://adtention.ai/r/h3r7vmj",
+    }
+
+
 def test_render_dedupe_by_impression_even_across_messages(tmp_path):
     store = StateStore(tmp_path)
     assert store.mark_rendered_once(("imp_1", "cr_1", "telegram", "msg_1")) is True

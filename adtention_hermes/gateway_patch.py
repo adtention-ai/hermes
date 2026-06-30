@@ -7,8 +7,8 @@ Discord adapter methods and decorating only recognized wait-state/status text.
 
 from __future__ import annotations
 
-import importlib
 import inspect
+import sys
 from collections.abc import Callable
 from typing import Any
 
@@ -167,9 +167,11 @@ def patch_gateway_status_helper(runtime: Any) -> None:
     is scheduled. This avoids process-global render-scope state for overlapping
     turns while leaving Hermes core untouched.
     """
-    try:
-        module = importlib.import_module("gateway.run")
-    except Exception:
+    module = sys.modules.get("gateway.run")
+    if module is None:
+        # Avoid importing the full Hermes gateway just to discover whether the
+        # helper exists. In real gateway execution gateway.run is already loaded;
+        # in tests/CLI imports, pulling it in here can block unrelated sends.
         return
     original = getattr(module, "_send_or_update_status_coro", None)
     if not callable(original):

@@ -37,6 +37,16 @@ class FastFakeClient(SlowFakeClient):
         super().__init__(delay_seconds=0)
 
 
+class ReferralFakeClient(FastFakeClient):
+    def register_install(self, **kwargs):
+        self.register_calls.append(kwargs)
+        return {
+            "publisher_id": "pub_registered",
+            "referral_code": "abc2345",
+            "referral_url": "https://adtention.ai/r/abc2345",
+        }
+
+
 def test_pre_gateway_dispatch_prefetches_sponsor_without_blocking(tmp_path):
     client = SlowFakeClient(delay_seconds=2)
     runtime = Runtime.for_tests(base_dir=tmp_path, client=client, publisher_id="pub_1")
@@ -213,6 +223,25 @@ def test_prefetch_registers_install_when_publisher_id_missing(tmp_path):
     assert client.serve_calls[0]["publisher_id"] == "pub_registered"
     assert runtime.publisher_id == "pub_registered"
     assert runtime.state.get_publisher_id() == "pub_registered"
+
+
+def test_prefetch_registers_with_referrer_env_and_stores_referral(tmp_path, monkeypatch):
+    monkeypatch.setenv("ADTENTION_REFERRER", "https://adtention.ai/r/H3R7VMJ?utm_secret=do-not-send")
+    client = ReferralFakeClient()
+    runtime = Runtime.for_tests(base_dir=tmp_path, client=client, publisher_id=None)
+
+    classification = runtime.classify_and_store(runtime.default_session_key, user_message="Research AI papers")
+    runtime.prefetch_sponsor_async(runtime.default_session_key, classification, "telegram")
+
+    deadline = time.monotonic() + 1
+    while time.monotonic() < deadline and not client.serve_calls:
+        time.sleep(0.01)
+
+    assert client.register_calls == [{"install_id": runtime.install_id, "referrer": "h3r7vmj"}]
+    assert runtime.state.get_referral() == {
+        "referral_code": "abc2345",
+        "referral_url": "https://adtention.ai/r/abc2345",
+    }
 
 
 def test_final_answer_after_same_turn_is_not_decorated(tmp_path):

@@ -78,6 +78,35 @@ def test_register_payload_tags_hermes_client():
     assert sent[0]["client"] == "hermes"
 
 
+def test_register_payload_sends_normalized_referrer_code_only():
+    sent = []
+
+    def fake_post(url, payload, timeout):
+        sent.append(payload)
+        return {"publisher_id": "pub_1"}
+
+    client = Client(api_url="https://api.adtention.ai", post_json=fake_post)
+    client.register_install(install_id="install_1", referrer="https://adtention.ai/r/H3R7VMJ?utm_secret=do-not-send")
+
+    assert sent[0]["ref"] == "h3r7vmj"
+    assert "referrer" not in sent[0]
+    assert "referral_url" not in sent[0]
+    assert "utm_secret" not in repr(sent[0])
+
+
+def test_register_payload_omits_invalid_referrer_values():
+    sent = []
+
+    def fake_post(url, payload, timeout):
+        sent.append(payload)
+        return {"publisher_id": "pub_1"}
+
+    client = Client(api_url="https://api.adtention.ai", post_json=fake_post)
+    client.register_install(install_id="install_1", referrer="https://evil.tld/r/not-a-code")
+
+    assert "ref" not in sent[0]
+
+
 def test_serve_payload_rejects_prompt_like_extra_fields():
     client = Client(api_url="https://api.adtention.ai", post_json=lambda *_: {})
     with pytest.raises(ValueError):

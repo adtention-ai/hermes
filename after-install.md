@@ -12,6 +12,7 @@ Then open Telegram or Discord and run:
 
 ```text
 /adtention status
+/adtention referral
 /adtention privacy
 ```
 

@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+import urllib.parse
 import urllib.request
 from typing import Any, Callable, Mapping
+
+from .referral import normalize_referrer
 
 PostJSON = Callable[[str, dict[str, Any], float], dict[str, Any]]
 
@@ -38,6 +41,7 @@ class Client:
         "client",
         "host",
         "client_version",
+        "ref",
     }
 
     def __init__(
@@ -124,12 +128,29 @@ class Client:
         self._validate_payload(payload, self.ACK_ALLOWED_KEYS)
         return self.post_json(f"{self.api_url}/v1/rendered", payload, self.timeout)
 
-    def register_install(self, *, install_id: str) -> dict[str, Any]:
+    def register_install(self, *, install_id: str, referrer: str | None = None) -> dict[str, Any]:
         payload = {
             "install_id": install_id,
             "client": self.CLIENT_TAG,
             "host": "hermes",
             "client_version": self.client_version,
         }
+        normalized_referrer = normalize_referrer(referrer)
+        if normalized_referrer:
+            payload["ref"] = normalized_referrer
         self._validate_payload(payload, self.REGISTER_ALLOWED_KEYS)
         return self.post_json(f"{self.api_url}/v1/register", payload, self.timeout)
+
+    def balance(self, *, publisher_id: str) -> dict[str, Any]:
+        query = urllib.parse.urlencode({"publisher_id": publisher_id})
+        request = urllib.request.Request(
+            f"{self.api_url}/v1/balance?{query}",
+            headers={
+                "Accept": "application/json",
+                "User-Agent": f"ADtention-Hermes/{self.client_version}",
+            },
+            method="GET",
+        )
+        with urllib.request.urlopen(request, timeout=self.timeout) as response:  # noqa: S310 - URL is user-configured API endpoint.
+            body = response.read().decode("utf-8")
+        return json.loads(body) if body else {}
