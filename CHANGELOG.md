@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## [0.1.4] - 2026-06-30
+
+**Referral command and referred-install attribution.**
 
 ### Added
 
@@ -8,9 +10,33 @@
 - Stores `referral_code` / `referral_url` returned by `POST /v1/register`; derives the standard `https://adtention.ai/r/<code>` link when the API returns only a code.
 - Supports referred installs through Hermes plugin install `--referral` / `--ref`, which Hermes persists to `ADTENTION_REFERRER`; the plugin normalizes it locally and sends the API only the 7-character `ref` code.
 
+### Install / update
+
+```bash
+hermes plugins install adtention-ai/hermes --enable
+hermes gateway restart
+```
+
+Referred install (attributes the install to a referrer on first registration):
+
+```bash
+hermes plugins install adtention-ai/hermes --enable --referral h3r7vmj
+hermes gateway restart
+```
+
+ADtention for Hermes still targets recognized Telegram/Discord wait states only.
+
 ### Privacy
 
-- Copied referral links and query strings are never sent verbatim; only the normalized referral code is included in the registration payload.
+Copied referral links and query strings are never sent verbatim; only the normalized 7-character referral code is included in the registration payload. The plugin still never sends prompts, replies, code, chat IDs, tool arguments, terminal output, or tool output.
+
+### Release verification
+
+- Full test suite passes.
+- `python -m compileall adtention_hermes` passes.
+- `ruff check .` passes.
+- `python -m build` produces wheel and sdist artifacts.
+- `git diff --check` passes.
 
 ## [0.1.3] - 2026-06-28
 
