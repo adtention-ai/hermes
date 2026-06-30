@@ -4,6 +4,12 @@ version: "0.1.3"
 description: "One quiet sponsor line for Hermes Telegram/Discord wait states that pays you while your agent works."
 author: "ADtention"
 kind: standalone
+install_options:
+  - name: referral
+    aliases:
+      - ref
+    env: ADTENTION_REFERRER
+    description: "ADtention referral code or referral link to attribute this install."
 provides_hooks:
   - pre_gateway_dispatch
   - pre_llm_call

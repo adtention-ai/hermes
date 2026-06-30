@@ -9,6 +9,9 @@ def test_plugin_yaml_has_required_fields():
     assert "manifest_version: 1" in text
     assert "name: adtention" in text
     assert "pre_gateway_dispatch" in text
+    assert "install_options:" in text
+    assert "name: referral" in text
+    assert "env: ADTENTION_REFERRER" in text
 
 
 def test_root_init_exports_register():
@@ -27,6 +30,7 @@ def test_after_install_mentions_gateway_restart():
 def test_readme_documents_privacy_and_install():
     text = Path("README.md").read_text()
     assert "hermes plugins install adtention-ai/hermes --enable" in text
+    assert "--referral h3r7vmj" in text
     assert "never sends prompts" in text.lower()
     assert "wait-state sponsor line" in text.lower()
 

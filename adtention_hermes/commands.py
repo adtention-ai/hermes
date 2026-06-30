@@ -49,6 +49,14 @@ def _referral_status(runtime) -> dict:
     return referral if isinstance(referral, dict) else {}
 
 
+def _referral_install_command(code: str) -> str:
+    return (
+        "hermes plugins install adtention-ai/hermes --enable "
+        f"--referral {code}\n"
+        "hermes gateway restart"
+    )
+
+
 def _format_referral_status(status: dict) -> str:
     code = str(status.get("referral_code") or "").strip()
     url = str(status.get("referral_url") or "").strip()
@@ -62,6 +70,8 @@ def _format_referral_status(status: dict) -> str:
     details = [f"Your ADtention referral link: {url}"]
     if code:
         details.append(f"Referral code: {code}")
+        details.append("Referred install command:")
+        details.append(f"```bash\n{_referral_install_command(code)}\n```")
     details.append("You earn 15% of referred publishers' ADtention impression earnings.")
     return "\n".join(details)
 
