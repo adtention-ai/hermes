@@ -248,6 +248,12 @@ def _is_explicit_status_call(method_name: str, kwargs: dict) -> bool:
     without that helper fall back to plain ``send``; those sends must either opt
     in via status metadata or come directly from Hermes' status helper so a user
     cannot spoof billing by making final content start with "⏳ Working".
+
+    Hermes' long-running heartbeat path currently calls Telegram ``send`` /
+    ``edit_message`` directly from a nested ``_notify_long_running`` coroutine;
+    those calls may carry only thread metadata, or no metadata on edits. Treat
+    that call frame as an explicit status surface while still requiring the
+    visible text to match ``is_wait_state`` before any sponsor is rendered.
     """
     if method_name == "send_or_update_status":
         return True
@@ -256,6 +262,8 @@ def _is_explicit_status_call(method_name: str, kwargs: dict) -> bool:
         bool(metadata.get(key))
         for key in ("non_conversational", "status", "status_key", "hermes_status")
     ):
+        return True
+    if method_name in {"send", "edit_message"} and _called_from_long_running_heartbeat():
         return True
     return _called_from_gateway_status_helper()
 
@@ -267,6 +275,21 @@ def _called_from_gateway_status_helper(*, max_depth: int = 8) -> bool:
         depth = 0
         while frame is not None and depth < max_depth:
             if frame.f_code.co_name == "_send_or_update_status_coro":
+                return True
+            frame = frame.f_back
+            depth += 1
+        return False
+    finally:
+        del frame
+
+
+def _called_from_long_running_heartbeat(*, max_depth: int = 12) -> bool:
+    frame = inspect.currentframe()
+    try:
+        frame = frame.f_back if frame is not None else None
+        depth = 0
+        while frame is not None and depth < max_depth:
+            if frame.f_code.co_name == "_notify_long_running":
                 return True
             frame = frame.f_back
             depth += 1

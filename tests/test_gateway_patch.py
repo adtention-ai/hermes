@@ -75,6 +75,36 @@ def test_send_from_gateway_status_helper_decorates_without_metadata():
     assert runtime.acked
 
 
+async def _notify_long_running(adapter, mode):
+    if mode == "edit":
+        return await adapter.edit_message("chat1", "heartbeat1", "⏳ Working — 3 min — iteration 3/150, web_extract")
+    return await adapter.send("chat1", "⏳ Working — 3 min — iteration 3/150, web_extract", metadata={"thread_id": "49"})
+
+
+def test_telegram_long_running_heartbeat_edit_decorates_without_metadata():
+    adapter = FakeAdapter(platform="telegram")
+    runtime = FakeRuntime()
+    wrap_adapter(adapter, runtime)
+
+    asyncio.run(_notify_long_running(adapter, "edit"))
+
+    assert "Neon" in adapter.edited[0][2]
+    assert adapter.edited[0][3]["finalize"] is True
+    assert runtime.acked
+
+
+def test_telegram_long_running_heartbeat_send_decorates_with_thread_metadata_only():
+    adapter = FakeAdapter(platform="telegram")
+    runtime = FakeRuntime()
+    wrap_adapter(adapter, runtime)
+
+    asyncio.run(_notify_long_running(adapter, "send"))
+
+    assert "Neon" in adapter.sent[0][1]
+    assert adapter.sent[0][2]["metadata"] == {"thread_id": "49"}
+    assert runtime.acked
+
+
 async def _fake_gateway_status_helper_original(adapter, chat_id, status_key, content, metadata):
     return await adapter.send(chat_id, content, metadata=metadata)
 
