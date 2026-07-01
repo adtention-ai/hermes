@@ -2,7 +2,7 @@
 
 ADtention adds one quiet sponsor line to Telegram/Discord wait-state messages only. It never decorates final answers and never sends standalone ads.
 
-Restart the Hermes gateway so the plugin is loaded. If you installed with `--referral <code>`, the first registration after this restart will be attributed.
+Restart the Hermes gateway so the plugin is loaded. For referred installs, set `ADTENTION_REFERRER=<code>` in the active Hermes `.env` before this first restart so registration is attributed.
 
 ```bash
 hermes gateway restart

@@ -30,7 +30,9 @@ def test_after_install_mentions_gateway_restart():
 def test_readme_documents_privacy_and_install():
     text = Path("README.md").read_text()
     assert "hermes plugins install adtention-ai/hermes --enable" in text
-    assert "--referral h3r7vmj" in text
+    assert "hermes config env-path" in text
+    assert "ADTENTION_REFERRER=h3r7vmj" in text
+    assert "--referral h3r7vmj" not in text
     assert "never sends prompts" in text.lower()
     assert "wait-state sponsor line" in text.lower()
 

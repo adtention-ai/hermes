@@ -45,7 +45,10 @@ def test_referral_command_reports_referral_link():
     assert "https://adtention.ai/r/h3r7vmj" in text
     assert "h3r7vmj" in text
     assert "15%" in text
-    assert "hermes plugins install adtention-ai/hermes --enable --referral h3r7vmj" in text
+    assert "hermes config env-path" in text
+    assert "ADTENTION_REFERRER=h3r7vmj" in text
+    assert "hermes plugins install adtention-ai/hermes --enable" in text
+    assert "--referral" not in text
 
 
 def test_referral_command_reports_unavailable_state():

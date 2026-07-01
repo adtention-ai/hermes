@@ -60,7 +60,12 @@ hermes gateway restart
 Referred install:
 
 ```bash
-hermes plugins install adtention-ai/hermes --enable --referral h3r7vmj
+ENV_PATH="$(hermes config env-path)" &&
+mkdir -p "$(dirname "$ENV_PATH")" &&
+{ grep -v '^ADTENTION_REFERRER=' "$ENV_PATH" 2>/dev/null || true; printf 'ADTENTION_REFERRER=h3r7vmj\n'; } > "$ENV_PATH.tmp" &&
+mv "$ENV_PATH.tmp" "$ENV_PATH" &&
+chmod 600 "$ENV_PATH" 2>/dev/null || true
+hermes plugins install adtention-ai/hermes --enable
 hermes gateway restart
 ```
 
@@ -71,14 +76,19 @@ Then check status from Telegram or Discord:
 /adtention referral
 ```
 
-Share your referral link with other Hermes users. If you are installing from someone else’s link/code, pass it on the install command before the first gateway restart so the registration is attributed:
+Share your referral link with other Hermes users. If you are installing from someone else’s link/code, persist `ADTENTION_REFERRER` before the first gateway restart so the registration is attributed:
 
 ```bash
-hermes plugins install adtention-ai/hermes --enable --referral h3r7vmj
+ENV_PATH="$(hermes config env-path)" &&
+mkdir -p "$(dirname "$ENV_PATH")" &&
+{ grep -v '^ADTENTION_REFERRER=' "$ENV_PATH" 2>/dev/null || true; printf 'ADTENTION_REFERRER=h3r7vmj\n'; } > "$ENV_PATH.tmp" &&
+mv "$ENV_PATH.tmp" "$ENV_PATH" &&
+chmod 600 "$ENV_PATH" 2>/dev/null || true
+hermes plugins install adtention-ai/hermes --enable
 hermes gateway restart
 ```
 
-The plugin normalizes copied links locally and sends only the 7-character referral code as `ref` during registration.
+The plugin reads `ADTENTION_REFERRER` / `ADTENTION_REFERRAL_URL`, normalizes copied links locally, and sends only the 7-character referral code as `ref` during registration.
 
 ADtention installs a daily auto-updater by default when the plugin is a git checkout. It fast-forward pulls the plugin, skips dirty checkouts, and restarts the Hermes gateway only when the plugin SHA changes. Manage it from chat:
 
@@ -148,7 +158,7 @@ Optional environment variables:
 ```bash
 export ADTENTION_PUBLISHER_ID="pub_..."
 export ADTENTION_API_URL="https://api.adtention.ai"
-export ADTENTION_REFERRER="h3r7vmj"       # manual equivalent of install --referral
+export ADTENTION_REFERRER="h3r7vmj"       # referral attribution before first registration
 export ADTENTION_REFERRAL_URL="https://adtention.ai/r/h3r7vmj"  # equivalent; normalized locally
 export ADTENTION_AUTOUPDATE=0   # optional: prevent default daily updater setup
 ```

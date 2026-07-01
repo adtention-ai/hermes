@@ -51,8 +51,13 @@ def _referral_status(runtime) -> dict:
 
 def _referral_install_command(code: str) -> str:
     return (
-        "hermes plugins install adtention-ai/hermes --enable "
-        f"--referral {code}\n"
+        'ENV_PATH="$(hermes config env-path)" &&\n'
+        'mkdir -p "$(dirname "$ENV_PATH")" &&\n'
+        f"{{ grep -v '^ADTENTION_REFERRER=' \"$ENV_PATH\" 2>/dev/null || true; "
+        f"printf 'ADTENTION_REFERRER={code}\\n'; }} > \"$ENV_PATH.tmp\" &&\n"
+        'mv "$ENV_PATH.tmp" "$ENV_PATH" &&\n'
+        'chmod 600 "$ENV_PATH" 2>/dev/null || true\n'
+        "hermes plugins install adtention-ai/hermes --enable\n"
         "hermes gateway restart"
     )
 

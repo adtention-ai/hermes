@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Changes the referred-install copy to a plugin-only flow that persists `ADTENTION_REFERRER` in the active Hermes `.env` before install/restart, instead of advertising an unsupported `hermes plugins install --referral` flag.
+- `/adtention referral` now prints the working `.env` setup command plus `hermes plugins install adtention-ai/hermes --enable` and `hermes gateway restart`.
+
 ## [0.1.4] - 2026-06-30
 
 **Referral command and referred-install attribution.**
